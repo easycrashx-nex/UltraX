@@ -228,7 +228,7 @@ function getAboutDetail(
     return "Restart to update";
   }
 
-  return runtimeInfo ? `UltraX ${runtimeInfo.appVersion}` : "Version info";
+  return runtimeInfo ? `UltraX Browser ${runtimeInfo.appVersion}` : "Version info";
 }
 
 function hasUpdateAttention(updateStatus: UpdateStatusSnapshot | null): boolean {

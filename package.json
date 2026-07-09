@@ -1,11 +1,12 @@
 {
   "name": "ultrax",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
-  "productName": "UltraX",
-  "description": "UltraX custom Electron browser MVP with React, TypeScript, Tailwind CSS, and WebContentsView tabs.",
+  "productName": "UltraX Browser",
+  "description": "UltraX Browser is a custom Electron desktop browser with React, TypeScript, Tailwind CSS, and WebContentsView tabs.",
   "author": "UltraX",
   "license": "UNLICENSED",
+  "homepage": "https://github.com/easycrashx-nex/UltraX",
   "repository": {
     "type": "git",
     "url": "https://github.com/easycrashx-nex/UltraX.git"
@@ -20,8 +21,9 @@
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run dist:win",
-    "dist:win": "npm run build && electron-builder --win nsis portable --x64 --publish never",
-    "dist:win:arm64": "npm run build && electron-builder --win nsis portable --arm64 --publish never",
+    "dist:win": "npm run build && electron-builder --win nsis portable --x64 --publish never && npm run checksum:release",
+    "dist:win:arm64": "npm run build && electron-builder --win nsis portable --arm64 --publish never && npm run checksum:release",
+    "checksum:release": "node scripts/generate-release-checksums.mjs",
     "release:win": "npm run dist:win"
   },
   "dependencies": {
@@ -53,7 +55,8 @@
   },
   "build": {
     "appId": "com.ultrax.browser",
-    "productName": "UltraX",
+    "productName": "UltraX Browser",
+    "copyright": "Copyright 2026 UltraX",
     "asar": true,
     "directories": {
       "buildResources": "build",
@@ -91,6 +94,10 @@
     "win": {
       "icon": "build/icon.ico",
       "requestedExecutionLevel": "asInvoker",
+      "verifyUpdateCodeSignature": false,
+      "signtoolOptions": {
+        "publisherName": "UltraX"
+      },
       "target": [
         "nsis",
         "portable"
@@ -99,15 +106,15 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowElevation": true,
+      "allowElevation": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "UltraX",
-      "uninstallDisplayName": "UltraX"
+      "shortcutName": "UltraX Browser",
+      "uninstallDisplayName": "UltraX Browser"
     },
     "portable": {
-      "artifactName": "UltraX-${version}-Portable-${arch}.${ext}"
+      "artifactName": "UltraX-Browser-${version}-Portable-${arch}.${ext}"
     },
     "publish": [
       {
@@ -117,6 +124,6 @@
         "releaseType": "release"
       }
     ],
-    "artifactName": "UltraX-Setup-${version}-${arch}.${ext}"
+    "artifactName": "UltraX-Browser-Setup-${version}-${arch}.${ext}"
   }
 }

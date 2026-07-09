@@ -11,6 +11,7 @@ import type {
   PerformanceMode,
   PermissionPolicy,
   SearchEngine,
+  SearchSuggestionProvider,
   ShaderFpsCap,
   ShaderPerformance,
   SitePermissionKey,
@@ -56,11 +57,21 @@ const DEFAULT_UPDATE_SETTINGS: BrowserSettings["updates"] = {
   channel: "stable",
 };
 
+const DEFAULT_SEARCH_SUGGESTION_SETTINGS: BrowserSettings["searchSuggestionSettings"] = {
+  localSuggestions: true,
+  historySuggestions: true,
+  bookmarkSuggestions: true,
+  openTabSuggestions: true,
+  onlineSuggestions: false,
+  suggestionProvider: "current-search-engine",
+};
+
 export const DEFAULT_SETTINGS: BrowserSettings = {
   browserName: "UltraX",
   searchEngine: "duckduckgo",
   customSearchUrl: "https://duckduckgo.com/?q={query}",
-  searchSuggestions: false,
+  searchSuggestions: true,
+  searchSuggestionSettings: DEFAULT_SEARCH_SUGGESTION_SETTINGS,
   addressBarSearch: true,
   startupBehavior: "restore-session",
   startupPages: [],
@@ -243,6 +254,9 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
       ]) ?? DEFAULT_SETTINGS.searchEngine,
     customSearchUrl: safeString(settings?.customSearchUrl, 512, DEFAULT_SETTINGS.customSearchUrl),
     searchSuggestions: boolValue(settings?.searchSuggestions, DEFAULT_SETTINGS.searchSuggestions),
+    searchSuggestionSettings: normalizeSearchSuggestionSettings(
+      settings?.searchSuggestionSettings,
+    ),
     addressBarSearch: boolValue(settings?.addressBarSearch, DEFAULT_SETTINGS.addressBarSearch),
     startupBehavior,
     startupPages: Array.isArray(settings?.startupPages)
@@ -427,6 +441,47 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
       Number.isFinite(settings?.pageZoom) && settings?.pageZoom
         ? Math.max(0.67, Math.min(1.5, Number(settings.pageZoom)))
         : DEFAULT_SETTINGS.pageZoom,
+  };
+}
+
+function normalizeSearchSuggestionSettings(
+  value: unknown,
+): BrowserSettings["searchSuggestionSettings"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return DEFAULT_SETTINGS.searchSuggestionSettings;
+  }
+
+  const candidate = value as Partial<BrowserSettings["searchSuggestionSettings"]>;
+  const suggestionProvider =
+    enumValue<SearchSuggestionProvider>(candidate.suggestionProvider, [
+      "current-search-engine",
+      "google",
+      "duckduckgo",
+      "none",
+    ]) ?? DEFAULT_SETTINGS.searchSuggestionSettings.suggestionProvider;
+
+  return {
+    localSuggestions: boolValue(
+      candidate.localSuggestions,
+      DEFAULT_SETTINGS.searchSuggestionSettings.localSuggestions,
+    ),
+    historySuggestions: boolValue(
+      candidate.historySuggestions,
+      DEFAULT_SETTINGS.searchSuggestionSettings.historySuggestions,
+    ),
+    bookmarkSuggestions: boolValue(
+      candidate.bookmarkSuggestions,
+      DEFAULT_SETTINGS.searchSuggestionSettings.bookmarkSuggestions,
+    ),
+    openTabSuggestions: boolValue(
+      candidate.openTabSuggestions,
+      DEFAULT_SETTINGS.searchSuggestionSettings.openTabSuggestions,
+    ),
+    onlineSuggestions: boolValue(
+      candidate.onlineSuggestions,
+      DEFAULT_SETTINGS.searchSuggestionSettings.onlineSuggestions,
+    ),
+    suggestionProvider,
   };
 }
 

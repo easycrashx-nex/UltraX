@@ -19,11 +19,12 @@ UltraX never installs an update silently. Restart/install requires user action.
 You can also update manually:
 
 1. Open the UltraX GitHub Releases page.
-2. Download the newest `UltraX Setup x64.exe`.
+2. Download the newest `UltraX-Browser-Setup-<version>-x64.exe`.
 3. Run the installer.
 4. Keep the existing install location unless you intentionally want to move it.
 
 The portable EXE can also be downloaded and run directly.
+Use `SHA256SUMS.txt` from the release if you want to verify downloaded artifacts.
 
 ## Current Release Source
 
@@ -41,6 +42,6 @@ In-app update checks require a packaged build with release metadata. Running fro
 
 ## Testing the Real Update Flow
 
-To test production updates, install an older packaged build such as UltraX `1.0.5`, publish a newer release such as `v1.0.6`, then open Settings > Updates in the older app and use Check for Updates, Download Update, and Install and Restart.
+To test production updates, install an older packaged build such as UltraX Browser `1.0.6`, publish a newer release such as `v1.0.7`, then open Settings > Updates in the older app and use Check for Updates, Download Update, and Install and Restart.
 
 If the installed app is already on the same version as the newest GitHub Release, the updater should correctly report that UltraX is up to date.

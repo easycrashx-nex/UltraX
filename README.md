@@ -57,6 +57,8 @@ Read:
 
 - [docs/updating.md](docs/updating.md)
 - [docs/releases.md](docs/releases.md)
+- [docs/windows-signing.md](docs/windows-signing.md)
+- [docs/release-trust-checklist.md](docs/release-trust-checklist.md)
 
 ## GitHub Setup
 

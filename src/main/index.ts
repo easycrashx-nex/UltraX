@@ -336,6 +336,52 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
     patch.searchSuggestions = readBoolean(candidate.searchSuggestions, "search suggestions");
   }
 
+  if (candidate.searchSuggestionSettings !== undefined) {
+    if (
+      !candidate.searchSuggestionSettings ||
+      typeof candidate.searchSuggestionSettings !== "object" ||
+      Array.isArray(candidate.searchSuggestionSettings)
+    ) {
+      throw new Error("Invalid search suggestion settings.");
+    }
+
+    const suggestions = candidate.searchSuggestionSettings as Partial<
+      BrowserSettings["searchSuggestionSettings"]
+    >;
+    if (
+      suggestions.suggestionProvider !== undefined &&
+      !["current-search-engine", "google", "duckduckgo", "none"].includes(
+        suggestions.suggestionProvider,
+      )
+    ) {
+      throw new Error("Invalid search suggestion provider.");
+    }
+
+    patch.searchSuggestionSettings = {
+      localSuggestions: readBoolean(
+        suggestions.localSuggestions,
+        "local suggestion setting",
+      ),
+      historySuggestions: readBoolean(
+        suggestions.historySuggestions,
+        "history suggestion setting",
+      ),
+      bookmarkSuggestions: readBoolean(
+        suggestions.bookmarkSuggestions,
+        "bookmark suggestion setting",
+      ),
+      openTabSuggestions: readBoolean(
+        suggestions.openTabSuggestions,
+        "open tab suggestion setting",
+      ),
+      onlineSuggestions: readBoolean(
+        suggestions.onlineSuggestions,
+        "online suggestion setting",
+      ),
+      suggestionProvider: suggestions.suggestionProvider ?? "current-search-engine",
+    };
+  }
+
   if (candidate.addressBarSearch !== undefined) {
     patch.addressBarSearch = readBoolean(candidate.addressBarSearch, "address bar search");
   }

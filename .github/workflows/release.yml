@@ -55,7 +55,7 @@ jobs:
           }
 
           $latestText = Get-Content "release/latest.yml" -Raw
-          if ($latestText -notmatch "UltraX-Setup-.+-x64\.exe") {
+          if ($latestText -notmatch "UltraX-Browser-Setup-.+-x64\.exe") {
             throw "latest.yml does not point to the Windows Setup installer."
           }
 
@@ -77,14 +77,24 @@ jobs:
       - name: Ensure GitHub release assets
         shell: pwsh
         run: |
-          $assets = @()
-          $assets += Get-ChildItem release -Filter "UltraX-Setup-*-x64.exe"
-          $assets += Get-ChildItem release -Filter "UltraX-Setup-*-x64.exe.blockmap"
-          $assets += Get-ChildItem release -Filter "UltraX-*-Portable-x64.exe"
-          $assets += Get-Item release/latest.yml
+          $version = node -p "require('./package.json').version"
+          $setup = "UltraX-Browser-Setup-$version-x64.exe"
+          $setupBlockmap = "$setup.blockmap"
+          $portable = "UltraX-Browser-$version-Portable-x64.exe"
 
-          if ($assets.Count -lt 4) {
-            throw "Expected installer, portable, blockmap, and latest.yml release assets."
+          $assets = @()
+          $assets += Get-Item "release/$setup" -ErrorAction Stop
+          $assets += Get-Item "release/$setupBlockmap" -ErrorAction Stop
+          $assets += Get-Item "release/$portable" -ErrorAction Stop
+          $assets += Get-Item "release/latest.yml" -ErrorAction Stop
+          $assets += Get-Item "release/$setup.sha256" -ErrorAction Stop
+          $assets += Get-Item "release/$setupBlockmap.sha256" -ErrorAction Stop
+          $assets += Get-Item "release/$portable.sha256" -ErrorAction Stop
+          $assets += Get-Item "release/latest.yml.sha256" -ErrorAction Stop
+          $assets += Get-Item "release/SHA256SUMS.txt" -ErrorAction Stop
+
+          if ($assets.Count -lt 9) {
+            throw "Expected installer, portable, blockmap, latest.yml, and checksum release assets."
           }
 
           foreach ($asset in $assets) {
@@ -101,4 +111,6 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/*.yml
+            release/*.sha256
+            release/SHA256SUMS.txt
           if-no-files-found: warn

@@ -2,6 +2,21 @@ export type ThemeMode = "dark" | "light" | "system";
 
 export type SearchEngine = "duckduckgo" | "google" | "bing" | "brave" | "custom";
 
+export type SearchSuggestionProvider =
+  | "current-search-engine"
+  | "google"
+  | "duckduckgo"
+  | "none";
+
+export type SearchSuggestionSettings = {
+  localSuggestions: boolean;
+  historySuggestions: boolean;
+  bookmarkSuggestions: boolean;
+  openTabSuggestions: boolean;
+  onlineSuggestions: boolean;
+  suggestionProvider: SearchSuggestionProvider;
+};
+
 export type StartupBehavior = "new-tab" | "restore-session" | "specific-pages";
 
 export type HomeBehavior = "new-tab" | "custom-url";
@@ -236,6 +251,7 @@ export type BrowserSettings = {
   searchEngine: SearchEngine;
   customSearchUrl: string;
   searchSuggestions: boolean;
+  searchSuggestionSettings: SearchSuggestionSettings;
   addressBarSearch: boolean;
   startupBehavior: StartupBehavior;
   startupPages: string[];

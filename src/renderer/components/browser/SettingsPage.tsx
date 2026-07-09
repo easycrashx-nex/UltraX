@@ -454,7 +454,7 @@ export function SettingsPage({
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold">UltraX Settings</h1>
             <p className="truncate text-xs text-muted-foreground">
-              v1.0.6 premium desktop controls for browsing, privacy, updates, extensions, and release diagnostics.
+              v1.0.7 premium desktop controls for browsing, privacy, updates, extensions, and release diagnostics.
             </p>
           </div>
         </div>
@@ -671,7 +671,7 @@ function CategoryContent({
     generatedAt: new Date().toISOString(),
     app: {
       name: runtimeInfo?.appName ?? "UltraX",
-      version: runtimeInfo?.appVersion ?? "1.0.6",
+      version: runtimeInfo?.appVersion ?? "1.0.7",
       electron: runtimeInfo?.electronVersion ?? "Unknown",
       chromium: runtimeInfo?.chromiumVersion ?? "Unknown",
       node: runtimeInfo?.nodeVersion ?? "Unknown",
@@ -901,7 +901,7 @@ function CategoryContent({
           </SettingSection>
           <StatusCard
             title="Release status"
-            detail={`UltraX ${runtimeInfo?.appVersion ?? "1.0.6"} is running in ${
+            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.7"} is running in ${
               runtimeInfo?.buildType ?? "development"
             } mode.`}
             icon={<Sparkles aria-hidden="true" />}
@@ -1101,9 +1101,96 @@ function CategoryContent({
             value={settings.customSearchUrl}
             onChange={(customSearchUrl) => onUpdateSettings({ customSearchUrl })}
           />
-          <ComingSoonRow
-            label="Search suggestions"
-            detail="Not enabled. UltraX does not send keystrokes to providers yet."
+          <SwitchRow
+            label="Address bar suggestions"
+            detail="Shows local suggestions while typing in the address bar."
+            checked={settings.searchSuggestions}
+            onChange={(checked) => onUpdateSettings({ searchSuggestions: checked })}
+          />
+          <SwitchRow
+            label="Local suggestions"
+            detail="Use local browser data without sending keystrokes anywhere."
+            checked={settings.searchSuggestionSettings.localSuggestions}
+            onChange={(checked) =>
+              onUpdateSettings({
+                searchSuggestionSettings: {
+                  ...settings.searchSuggestionSettings,
+                  localSuggestions: checked,
+                },
+              })
+            }
+          />
+          <SwitchRow
+            label="History suggestions"
+            detail="Suggest matching pages from local history."
+            checked={settings.searchSuggestionSettings.historySuggestions}
+            onChange={(checked) =>
+              onUpdateSettings({
+                searchSuggestionSettings: {
+                  ...settings.searchSuggestionSettings,
+                  historySuggestions: checked,
+                },
+              })
+            }
+          />
+          <SwitchRow
+            label="Bookmark suggestions"
+            detail="Suggest saved pages from local bookmarks."
+            checked={settings.searchSuggestionSettings.bookmarkSuggestions}
+            onChange={(checked) =>
+              onUpdateSettings({
+                searchSuggestionSettings: {
+                  ...settings.searchSuggestionSettings,
+                  bookmarkSuggestions: checked,
+                },
+              })
+            }
+          />
+          <SwitchRow
+            label="Open tab suggestions"
+            detail="Suggest switching to matching open tabs."
+            checked={settings.searchSuggestionSettings.openTabSuggestions}
+            onChange={(checked) =>
+              onUpdateSettings({
+                searchSuggestionSettings: {
+                  ...settings.searchSuggestionSettings,
+                  openTabSuggestions: checked,
+                },
+              })
+            }
+          />
+          <SwitchRow
+            label="Online suggestions"
+            detail="Optional. Sends typed text to the selected suggestion provider."
+            checked={settings.searchSuggestionSettings.onlineSuggestions}
+            onChange={(checked) =>
+              onUpdateSettings({
+                searchSuggestionSettings: {
+                  ...settings.searchSuggestionSettings,
+                  onlineSuggestions: checked,
+                },
+              })
+            }
+          />
+          <SelectRow
+            label="Suggestion provider"
+            detail="Current search engine only uses online suggestions for Google or DuckDuckGo."
+            value={settings.searchSuggestionSettings.suggestionProvider}
+            onChange={(value) =>
+              onUpdateSettings({
+                searchSuggestionSettings: {
+                  ...settings.searchSuggestionSettings,
+                  suggestionProvider:
+                    value as BrowserSettings["searchSuggestionSettings"]["suggestionProvider"],
+                },
+              })
+            }
+            options={[
+              ["current-search-engine", "Current search engine"],
+              ["duckduckgo", "DuckDuckGo"],
+              ["google", "Google"],
+              ["none", "None"],
+            ]}
           />
         </SettingSection>
       );
@@ -1198,6 +1285,10 @@ function CategoryContent({
             detail="Adds the DNT request header to web requests."
             checked={settings.doNotTrack}
             onChange={(checked) => onUpdateSettings({ doNotTrack: checked })}
+          />
+          <InfoRow
+            label="Online search suggestions"
+            detail="Disabled by default. When Do Not Track is on, UltraX does not request online suggestions."
           />
           <SelectRow
             label="History retention"
@@ -1331,7 +1422,7 @@ function CategoryContent({
             <ComingSoonRow label="Add profile" detail="Separate profile storage is planned for v1.1." />
             <ComingSoonRow label="Guest mode" detail="Requires a separate temporary session partition." />
           </SettingSection>
-          <EmptyFeature title="Profiles are coming next" detail="v1.0.6 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
+          <EmptyFeature title="Profiles are coming next" detail="v1.0.7 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
         </>
       );
 
@@ -1357,7 +1448,7 @@ function CategoryContent({
             <InfoRow label="What extensions are" detail="Browser-level add-ons with scoped permissions for tabs, sidebar, and local browser features." />
             <ComingSoonRow label="Plugin marketplace" detail="Requires signed native module loading and a separate trust boundary." />
           </SettingSection>
-          <EmptyFeature title="Plugin system not enabled" detail="UltraX v1.0.6 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
+          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.0.7 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
         </>
       );
 
@@ -1957,7 +2048,7 @@ function CategoryContent({
           )}
 
           <SettingSection title="Diagnostics" detail="Local performance information safe to copy or export.">
-            <InfoRow label="App version" detail={`UltraX ${runtimeInfo?.appVersion ?? "1.0.6"}`} />
+            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.7"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -1995,14 +2086,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset performance settings"
-              detail="Restores only this Performance page to v1.0.6 defaults."
+              detail="Restores only this Performance page to v1.0.7 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset performance settings?",
-                  "Only the Performance page settings will return to the v1.0.6 defaults.",
+                  "Only the Performance page settings will return to the v1.0.7 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultPerformanceSettings),
                 )
@@ -2098,7 +2189,7 @@ function CategoryContent({
             onAction={() =>
               requestConfirm(
                 "Reset all UltraX settings?",
-                "This restores preferences to the v1.0.6 defaults.",
+                "This restores preferences to the v1.0.7 defaults.",
                 "Reset",
                 onResetSettings,
               )
@@ -2111,7 +2202,7 @@ function CategoryContent({
     case "updates": {
       const update = updateStatus ?? {
         status: "idle",
-        currentVersion: runtimeInfo?.appVersion ?? "1.0.6",
+        currentVersion: runtimeInfo?.appVersion ?? "1.0.7",
         channel: settings.updates.channel,
         updateAvailable: false,
         lastCheckedAt: settings.updates.lastCheckedAt,
@@ -2125,7 +2216,7 @@ function CategoryContent({
       return (
         <>
           <SettingSection title="Updates" detail="GitHub Releases update status and release channel.">
-            <InfoRow label="Current version" detail={`UltraX ${update.currentVersion}`} />
+            <InfoRow label="Current version" detail={`UltraX Browser ${update.currentVersion}`} />
             <SegmentedRow
               label="Release channel"
               detail="Stable is active now. Beta and Nightly are prepared for future release feeds."
@@ -2276,7 +2367,7 @@ function CategoryContent({
       return (
         <>
           <SettingSection title="About UltraX" detail="Build and engine information.">
-            <InfoRow label="App" detail={`UltraX ${runtimeInfo?.appVersion ?? "1.0.6"}`} />
+            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.7"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2291,8 +2382,8 @@ function CategoryContent({
             <InfoRow label="License" detail="Project-local MVP placeholder." />
           </SettingSection>
           <StatusCard
-            title="UltraX v1.0.6"
-            detail="GitHub Releases update architecture, in-app update controls, native Extensions, and preserved Chromium browser security."
+            title="UltraX Browser v1.0.7"
+            detail="Search suggestions, release trust hygiene, GitHub Releases updates, native Extensions, and preserved Chromium browser security."
             icon={<Sparkles aria-hidden="true" />}
           />
         </>

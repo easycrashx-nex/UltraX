@@ -246,7 +246,9 @@ export function BrowserShell({ state }: BrowserShellProps) {
 
       <Toolbar
         activeTab={activeTab}
+        tabs={state.tabs}
         bookmarks={state.bookmarks}
+        history={state.history}
         settings={state.settings}
         addressValue={addressValue}
         addressInputRef={addressInputRef}
@@ -254,6 +256,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
         quickSettingsOpen={quickSettingsOpen}
         onAddressChange={setAddressValue}
         onNavigate={navigate}
+        onSwitchTab={(tabId) => void window.ultraX.switchTab(tabId)}
         onBack={() => void window.ultraX.goBack()}
         onForward={() => void window.ultraX.goForward()}
         onReload={() => void window.ultraX.reload()}

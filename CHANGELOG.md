@@ -1,5 +1,29 @@
 # UltraX Browser Changelog
 
+## 1.0.7 - Search Suggestions and Release Trust QoL
+
+### Added
+
+- Added address bar suggestions for direct URLs, searches, open tabs, bookmarks, and local history.
+- Added keyboard navigation for suggestions with arrow keys, Enter, Escape, and Tab completion.
+- Added privacy-controlled online suggestions for Google and DuckDuckGo, disabled by default.
+- Added persisted search suggestion settings for local, history, bookmark, open-tab, online, and provider controls.
+- Added Windows signing documentation and a release trust checklist.
+- Added SHA256 checksum generation for release artifacts.
+
+### Improved
+
+- Updated visible app metadata to UltraX Browser 1.0.7.
+- Improved Windows installer metadata, publisher metadata, artifact naming, and per-user install behavior.
+- Reduced unnecessary installer elevation by keeping normal installs asInvoker/per-user.
+- Updated release workflow checks for the new installer naming and checksum uploads.
+
+### Security
+
+- Online suggestions send only the typed query to the selected provider and never send history, bookmarks, or tab data.
+- Online suggestions remain off by default and are suppressed when Do Not Track is enabled.
+- Release trust work avoids antivirus bypasses, packers, obfuscation, or security-disabling behavior.
+
 ## 1.0.6 - Update System Release
 
 ### Added
