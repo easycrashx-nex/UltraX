@@ -20,6 +20,7 @@ Use this checklist before publishing a public UltraX Browser Windows release.
 
 - Confirm product name is `UltraX Browser`.
 - Confirm publisher name is `UltraX`.
+- Confirm executable name is `UltraX Browser`.
 - Confirm installer and portable artifact names include version and architecture.
 - Confirm installer requested execution level is `asInvoker`.
 - Confirm installer does not require admin elevation for normal per-user install.
@@ -28,6 +29,7 @@ Use this checklist before publishing a public UltraX Browser Windows release.
 ## Signing
 
 - Configure `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` as GitHub Actions secrets when a certificate is available.
+- Prefer a long-lived OV or EV certificate from a reputable CA; EV helps enterprise identity validation but does not guarantee instant SmartScreen reputation.
 - Verify signatures with `Get-AuthenticodeSignature`.
 - Keep signing credentials out of the repository.
 
@@ -40,6 +42,7 @@ Use this checklist before publishing a public UltraX Browser Windows release.
 - Upload `SHA256SUMS.txt`.
 - Upload individual `.sha256` files.
 - Confirm `latest.yml` points to the Setup EXE.
+- Confirm `SHA256SUMS.txt` contains Setup, Portable, blockmap, and `latest.yml` entries.
 
 ## False Positive Handling
 

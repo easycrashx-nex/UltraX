@@ -7,6 +7,8 @@ import type {
   BrowserSettings,
   BrowserState,
   BrowserTab,
+  BrowserWindowBounds,
+  BrowserWindowSession,
   BlurIntensity,
   CloseBehavior,
   CornerRadius,
@@ -34,7 +36,7 @@ import type {
 } from "../shared/types";
 import { ensureBuiltInExtensions } from "./extensions";
 
-const STORAGE_VERSION = 5;
+const STORAGE_VERSION = 6;
 
 type StoredPayload = {
   version: number;
@@ -159,9 +161,13 @@ export const DEFAULT_SETTINGS: BrowserSettings = {
 };
 
 export function createDefaultState(): BrowserState {
+  const windowId = randomUUID();
   return {
+    windowId,
     tabs: [],
     activeTabId: null,
+    windows: [],
+    lastActiveWindowId: windowId,
     bookmarks: [],
     history: [],
     downloads: [],
@@ -199,6 +205,61 @@ export class StorageService {
   }
 
   save(state: BrowserState): void {
+    this.writeState(state);
+  }
+
+  saveWindowState(
+    windowId: string,
+    state: BrowserState,
+    bounds?: BrowserWindowBounds,
+  ): void {
+    const current = this.load();
+    const session: BrowserWindowSession = {
+      id: windowId,
+      tabs: normalizeTabs(state.tabs),
+      activeTabId:
+        typeof state.activeTabId === "string" &&
+        state.tabs.some((tab) => tab.id === state.activeTabId)
+          ? state.activeTabId
+          : state.tabs[0]?.id ?? null,
+      ...(bounds ? { bounds: normalizeWindowBounds(bounds) } : {}),
+    };
+    const windows = [
+      ...current.windows.filter((windowSession) => windowSession.id !== windowId),
+      session,
+    ].slice(-12);
+
+    this.writeState({
+      ...current,
+      bookmarks: state.bookmarks,
+      history: state.history,
+      downloads: state.downloads,
+      installedExtensions: state.installedExtensions,
+      extensionStorage: state.extensionStorage,
+      settings: state.settings,
+      windowId,
+      tabs: session.tabs,
+      activeTabId: session.activeTabId,
+      windows,
+      lastActiveWindowId: windowId,
+    });
+  }
+
+  removeWindowState(windowId: string): void {
+    const current = this.load();
+    const windows = current.windows.filter((windowSession) => windowSession.id !== windowId);
+    const fallback = windows.find((session) => session.id === current.lastActiveWindowId) ?? windows[0];
+    this.writeState({
+      ...current,
+      windowId: fallback?.id ?? current.windowId,
+      tabs: fallback?.tabs ?? [],
+      activeTabId: fallback?.activeTabId ?? null,
+      windows,
+      lastActiveWindowId: fallback?.id,
+    });
+  }
+
+  private writeState(state: BrowserState): void {
     const directory = path.dirname(this.filePath);
     fs.mkdirSync(directory, { recursive: true });
 
@@ -216,11 +277,28 @@ export class StorageService {
 function normalizeState(state?: Partial<BrowserState>): BrowserState {
   const defaults = createDefaultState();
   const settings = normalizeSettings(state?.settings);
+  const windows = normalizeWindowSessions(state?.windows);
+  const fallbackWindow =
+    windows.find((windowSession) => windowSession.id === state?.lastActiveWindowId) ??
+    windows[0];
+  const tabs = normalizeTabs(state?.tabs);
+  const activeTabId =
+    typeof state?.activeTabId === "string" && tabs.some((tab) => tab.id === state.activeTabId)
+      ? state.activeTabId
+      : tabs[0]?.id ?? fallbackWindow?.activeTabId ?? defaults.activeTabId;
 
   return {
-    tabs: normalizeTabs(state?.tabs),
-    activeTabId:
-      typeof state?.activeTabId === "string" ? state.activeTabId : defaults.activeTabId,
+    windowId:
+      typeof state?.windowId === "string" && state.windowId
+        ? state.windowId
+        : fallbackWindow?.id ?? defaults.windowId,
+    tabs: tabs.length > 0 ? tabs : fallbackWindow?.tabs ?? defaults.tabs,
+    activeTabId,
+    windows,
+    lastActiveWindowId:
+      typeof state?.lastActiveWindowId === "string"
+        ? state.lastActiveWindowId
+        : fallbackWindow?.id ?? defaults.lastActiveWindowId,
     bookmarks: Array.isArray(state?.bookmarks)
       ? state.bookmarks.slice(0, 500)
       : defaults.bookmarks,
@@ -550,11 +628,65 @@ function normalizeTabs(value: unknown): BrowserTab[] {
       canGoForward: boolValue(tab.canGoForward, false),
       isNewTab: boolValue(tab.isNewTab, true),
       isPinned: boolValue(tab.isPinned, false),
+      isMuted: boolValue(tab.isMuted, false),
+      isAudible: boolValue(tab.isAudible, false),
       error:
         typeof tab.error === "string" && tab.error.length <= 512
           ? tab.error
           : undefined,
     }));
+}
+
+function normalizeWindowSessions(value: unknown): BrowserWindowSession[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is Partial<BrowserWindowSession> => Boolean(item) && typeof item === "object")
+    .slice(0, 12)
+    .map((session) => {
+      const tabs = normalizeTabs(session.tabs);
+      const activeTabId =
+        typeof session.activeTabId === "string" &&
+        tabs.some((tab) => tab.id === session.activeTabId)
+          ? session.activeTabId
+          : tabs[0]?.id ?? null;
+
+      return {
+        id: typeof session.id === "string" && session.id ? session.id : randomUUID(),
+        tabs,
+        activeTabId,
+        ...(session.bounds ? { bounds: normalizeWindowBounds(session.bounds) } : {}),
+      };
+    })
+    .filter((session) => session.tabs.length > 0);
+}
+
+function normalizeWindowBounds(value: unknown): BrowserWindowBounds | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Partial<BrowserWindowBounds>;
+  if (!Number.isFinite(candidate.width) || !Number.isFinite(candidate.height)) {
+    return undefined;
+  }
+
+  const bounds: BrowserWindowBounds = {
+    width: Math.max(940, Math.min(3840, Math.round(Number(candidate.width)))),
+    height: Math.max(620, Math.min(2160, Math.round(Number(candidate.height)))),
+  };
+
+  if (Number.isFinite(candidate.x)) {
+    bounds.x = Math.round(Number(candidate.x));
+  }
+
+  if (Number.isFinite(candidate.y)) {
+    bounds.y = Math.round(Number(candidate.y));
+  }
+
+  return bounds;
 }
 
 function normalizeSearchSuggestionSettings(

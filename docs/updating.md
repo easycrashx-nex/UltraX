@@ -42,6 +42,6 @@ In-app update checks require a packaged build with release metadata. Running fro
 
 ## Testing the Real Update Flow
 
-To test production updates, install an older packaged build such as UltraX Browser `1.0.7`, publish a newer release such as `v1.0.8`, then open Settings > Updates in the older app and use Check for Updates, Download Update, and Install and Restart.
+To test production updates, install an older packaged build such as UltraX Browser `1.0.8`, publish a newer release such as `v1.0.9`, then open Settings > Updates in the older app and use Check for Updates, Download Update, and Install and Restart.
 
 If the installed app is already on the same version as the newest GitHub Release, the updater should correctly report that UltraX is up to date.

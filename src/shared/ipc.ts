@@ -14,6 +14,7 @@ export const IPC = {
   closeOtherTabs: "tabs:close-others",
   closeTabsToRight: "tabs:close-to-right",
   moveTabToNewWindow: "tabs:move-to-new-window",
+  toggleTabMuted: "tabs:toggle-muted",
   switchTab: "tabs:switch",
   navigate: "tabs:navigate",
   goHome: "tabs:home",

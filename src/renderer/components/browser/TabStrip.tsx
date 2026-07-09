@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCw,
   Square,
+  Volume2,
   VolumeX,
   X,
 } from "lucide-react";
@@ -30,6 +31,7 @@ type TabStripProps = {
   onCloseOtherTabs: (tabId: string) => void;
   onCloseTabsToRight: (tabId: string) => void;
   onMoveTabToNewWindow: (tabId: string) => void;
+  onToggleTabMuted: (tabId: string) => void;
   onMinimize: () => void;
   onToggleMaximize: () => void;
   onCloseWindow: () => void;
@@ -54,6 +56,7 @@ export function TabStrip({
   onCloseOtherTabs,
   onCloseTabsToRight,
   onMoveTabToNewWindow,
+  onToggleTabMuted,
   onMinimize,
   onToggleMaximize,
   onCloseWindow,
@@ -106,7 +109,9 @@ export function TabStrip({
             <button
               key={tab.id}
               type="button"
-              title={tab.title}
+              title={`${tab.isMuted ? "Muted - " : tab.isAudible ? "Playing audio - " : ""}${tab.title}`}
+              data-testid="browser-tab"
+              data-tab-id={tab.id}
               draggable
               onDragStart={(event) => {
                 setDraggedTabId(tab.id);
@@ -169,6 +174,23 @@ export function TabStrip({
               ) : (
                 <Globe2 className="size-3.5" aria-hidden="true" />
               )}
+              {(tab.isMuted || tab.isAudible) && (
+                <span
+                  title={tab.isMuted ? "Muted tab" : "Audio playing"}
+                  data-testid={tab.isMuted ? "tab-muted-indicator" : "tab-audible-indicator"}
+                  className={cn(
+                    "grid size-4 shrink-0 place-items-center rounded-md text-muted-foreground",
+                    tab.isMuted && "text-primary",
+                    tab.isPinned && "absolute bottom-0.5 right-0.5 size-3 bg-background/90",
+                  )}
+                >
+                  {tab.isMuted ? (
+                    <VolumeX className="size-3" aria-hidden="true" />
+                  ) : (
+                    <Volume2 className="size-3" aria-hidden="true" />
+                  )}
+                </span>
+              )}
               {!tab.isPinned && <span className="min-w-0 flex-1 truncate">{tab.title}</span>}
               {!tab.isPinned && (
                 <span
@@ -202,6 +224,7 @@ export function TabStrip({
           size="iconSm"
           title="New tab"
           aria-label="New tab"
+          data-testid="new-tab-button"
           onClick={onCreateTab}
           className="no-drag mb-0.5"
         >
@@ -270,7 +293,11 @@ export function TabStrip({
             label={menuTab.isPinned ? "Unpin Tab" : "Pin Tab"}
             onClick={() => runMenuAction(() => onPinTab(menuTab.id, !menuTab.isPinned))}
           />
-          <TabMenuItem icon={<VolumeX aria-hidden="true" />} label="Mute Site" disabled />
+          <TabMenuItem
+            icon={menuTab.isMuted ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
+            label={menuTab.isMuted ? "Unmute Tab" : "Mute Tab"}
+            onClick={() => runMenuAction(() => onToggleTabMuted(menuTab.id))}
+          />
           <div className="my-1 h-px bg-border/70" />
           <TabMenuItem
             icon={<X aria-hidden="true" />}
@@ -290,8 +317,7 @@ export function TabStrip({
           <TabMenuItem
             icon={<PanelTopOpen aria-hidden="true" />}
             label="Move Tab to New Window"
-            disabled
-            onClick={() => onMoveTabToNewWindow(menuTab.id)}
+            onClick={() => runMenuAction(() => onMoveTabToNewWindow(menuTab.id))}
           />
         </div>
       )}

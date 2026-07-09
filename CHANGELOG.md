@@ -1,5 +1,30 @@
 # UltraX Browser Changelog
 
+## 1.0.9 - Stability and Browser UX Update
+
+### Added
+
+- Added real Move Tab to New Window behavior from the tab context menu.
+- Added a multi-window session model with per-window tab lists, active tab IDs, pinned tab order, and window bounds.
+- Added Mute Tab / Unmute Tab runtime controls backed by Electron `webContents.setAudioMuted`.
+- Added muted and audio-playing indicators in the tab strip.
+- Added Playwright/E2E coverage for tab UX, settings persistence, and the Updates page smoke path.
+- Added E2E-safe user data isolation through `ULTRAX_E2E_USER_DATA`.
+
+### Improved
+
+- Browser IPC now dispatches by trusted window sender so multiple UltraX windows can operate at the same time.
+- Session persistence now updates the current window session without overwriting other window sessions.
+- Windows package metadata now includes stronger publisher/executable metadata and SHA256-only signing hash configuration.
+- Signing and release trust documentation now covers normal vs EV certificates, false positive submission, verification, and reputation building.
+
+### Known Limitations
+
+- Moving tabs between already-open UltraX windows is prepared by the session model but does not have UI in v1.0.9.
+- Dragging a tab out of the strip to detach is intentionally not enabled yet; context-menu Move Tab to New Window is the stable path.
+- A moved tab reloads from its URL in the new window instead of transferring live WebContents history/DOM state, because Electron WebContents cannot be safely owned by two windows.
+- Windows builds remain unsigned until real signing secrets/certificates are configured in GitHub Actions.
+
 ## 1.0.8 - Browser UX, Appearance, and Tab Management
 
 ### Added

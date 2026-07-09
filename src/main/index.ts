@@ -6,10 +6,13 @@ import {
   session,
   type IpcMainInvokeEvent,
 } from "electron";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { IPC } from "../shared/ipc";
 import type {
   BrowserSettings,
+  BrowserWindowBounds,
+  BrowserWindowSession,
   ExtensionApiRequest,
   ExtensionRuntimeLogLevel,
   PermissionPolicy,
@@ -23,26 +26,40 @@ import { WEB_PARTITION } from "./navigation";
 import { StorageService } from "./storage";
 import { UpdateManager } from "./updates/update-manager";
 
-let mainWindow: BrowserWindow | null = null;
-let controller: BrowserController | null = null;
-let updateManager: UpdateManager | null = null;
-let allowWindowClose = false;
+type WindowRecord = {
+  id: string;
+  window: BrowserWindow;
+  controller: BrowserController;
+  updateManager: UpdateManager;
+  allowWindowClose: boolean;
+};
+
+type CreateWindowOptions = {
+  session?: BrowserWindowSession;
+  focus?: boolean;
+};
+
+const windowRecords = new Map<number, WindowRecord>();
+let storage = undefined as unknown as StorageService;
+let ipcHandlersRegistered = false;
 
 const shouldUseDevServer = !app.isPackaged && process.env.ULTRAX_DEV_SERVER === "1";
 const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5173";
 
 app.setName("UltraX");
 app.setAppUserModelId("com.ultrax.browser");
+if (process.env.ULTRAX_E2E_USER_DATA) {
+  app.setPath("userData", process.env.ULTRAX_E2E_USER_DATA);
+}
+storage = new StorageService();
 applyStartupHardwareAccelerationPreference();
 
-function createWindow(): void {
+function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
   const workArea = screen.getPrimaryDisplay().workAreaSize;
-  const initialWidth = Math.min(1320, Math.max(940, Math.floor(workArea.width * 0.9)));
-  const initialHeight = Math.min(860, Math.max(620, Math.floor(workArea.height * 0.9)));
+  const initialBounds = getInitialWindowBounds(options.session?.bounds, workArea);
 
-  mainWindow = new BrowserWindow({
-    width: initialWidth,
-    height: initialHeight,
+  const window = new BrowserWindow({
+    ...initialBounds,
     minWidth: 940,
     minHeight: 620,
     frame: false,
@@ -59,18 +76,34 @@ function createWindow(): void {
     },
   });
 
-  controller = new BrowserController(mainWindow, new StorageService());
-  updateManager = new UpdateManager(
-    mainWindow,
-    () => controller?.getState().settings.updates ?? {
+  const windowId = options.session?.id ?? randomUUID();
+  const controller = new BrowserController(window, storage, {
+    windowId,
+    initialSession: options.session,
+    onCreateWindowFromTab: (tab) => {
+      const newWindow = createWindow({
+        session: {
+          id: randomUUID(),
+          tabs: [tab],
+          activeTabId: tab.id,
+          bounds: offsetBounds(window.getBounds()),
+        },
+        focus: true,
+      });
+      newWindow.focus();
+    },
+  });
+  const updateManager = new UpdateManager(
+    window,
+    () => controller.getState().settings.updates ?? {
       autoCheck: false,
       autoDownload: false,
       notifyWhenAvailable: true,
       channel: "stable",
     },
     (patch) => {
-      const current = controller?.getState().settings.updates;
-      if (!controller || !current) {
+      const current = controller.getState().settings.updates;
+      if (!current) {
         return;
       }
 
@@ -82,49 +115,55 @@ function createWindow(): void {
       });
     },
   );
-  registerIpc(mainWindow, controller, updateManager);
 
-  mainWindow.on("close", (event) => {
-    if (allowWindowClose) {
+  const record: WindowRecord = {
+    id: windowId,
+    window,
+    controller,
+    updateManager,
+    allowWindowClose: false,
+  };
+  const webContentsId = window.webContents.id;
+  windowRecords.set(webContentsId, record);
+
+  window.on("close", (event) => {
+    if (record.allowWindowClose) {
       return;
     }
 
-    const currentController = controller;
-    if (!currentController) {
-      return;
-    }
-
-    if (currentController.shouldAskBeforeWindowClose()) {
+    if (record.controller.shouldAskBeforeWindowClose()) {
       event.preventDefault();
-      mainWindow?.webContents.send(IPC.requestCloseConfirmation);
+      window.webContents.send(IPC.requestCloseConfirmation);
       return;
     }
 
     const discardSession =
-      currentController.getState().settings.closeBehavior === "close-and-discard-session";
-    currentController.prepareForWindowClose(discardSession);
-    allowWindowClose = true;
+      record.controller.getState().settings.closeBehavior === "close-and-discard-session";
+    record.controller.prepareForWindowClose(discardSession);
+    record.allowWindowClose = true;
   });
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.show();
-    controller?.init();
-    updateManager?.init();
+  window.once("ready-to-show", () => {
+    window.show();
+    if (options.focus !== false) {
+      window.focus();
+    }
+    record.controller.init();
+    record.updateManager.init();
   });
 
   if (shouldUseDevServer) {
-    void mainWindow.loadURL(devServerUrl);
+    void window.loadURL(devServerUrl);
   } else {
-    void mainWindow.loadFile(path.join(__dirname, "../../dist/index.html"));
+    void window.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
 
-  mainWindow.on("closed", () => {
-    allowWindowClose = false;
-    controller?.dispose();
-    mainWindow = null;
-    controller = null;
-    updateManager = null;
+  window.on("closed", () => {
+    record.controller.dispose();
+    windowRecords.delete(webContentsId);
   });
+
+  return window;
 }
 
 function getWindowIconPath(): string {
@@ -149,174 +188,254 @@ function configureSecurity(): void {
   });
 }
 
-function registerIpc(
-  window: BrowserWindow,
-  browser: BrowserController,
-  updates: UpdateManager,
-): void {
-  const trusted = (event: IpcMainInvokeEvent) => {
-    if (event.sender !== window.webContents) {
-      throw new Error("Rejected IPC call from untrusted sender.");
-    }
-  };
+function createInitialWindows(): void {
+  const state = storage.load();
+  const shouldRestoreSession =
+    state.settings.startupBehavior === "restore-session" && state.windows.length > 0;
+
+  if (!shouldRestoreSession) {
+    createWindow();
+    return;
+  }
+
+  const lastActiveWindowId = state.lastActiveWindowId ?? state.windows[0]?.id;
+  for (const session of state.windows) {
+    createWindow({
+      session,
+      focus: session.id === lastActiveWindowId,
+    });
+  }
+}
+
+function registerIpcHandlers(): void {
+  if (ipcHandlersRegistered) {
+    return;
+  }
+  ipcHandlersRegistered = true;
 
   const handle = (
     channel: string,
-    listener: (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown,
+    listener: (record: WindowRecord, event: IpcMainInvokeEvent, ...args: unknown[]) => unknown,
   ) => {
     ipcMain.removeHandler(channel);
     ipcMain.handle(channel, (event, ...args) => {
-      trusted(event);
-      return listener(event, ...args);
+      return listener(getRecordForEvent(event), event, ...args);
     });
   };
 
-  handle(IPC.getState, () => browser.getState());
-  handle(IPC.setViewInsets, (_event, insets) => browser.setViewInsets(readInsets(insets)));
-  handle(IPC.createTab, () => browser.createTab(undefined, true));
-  handle(IPC.closeTab, (_event, tabId) =>
-    browser.closeTab(readString(tabId, "tabId", 128)),
+  handle(IPC.getState, (record) => record.controller.getState());
+  handle(IPC.setViewInsets, (record, _event, insets) => record.controller.setViewInsets(readInsets(insets)));
+  handle(IPC.createTab, (record) => record.controller.createTab(undefined, true));
+  handle(IPC.closeTab, (record, _event, tabId) =>
+    record.controller.closeTab(readString(tabId, "tabId", 128)),
   );
-  handle(IPC.duplicateTab, (_event, tabId) =>
-    browser.duplicateTab(readString(tabId, "tabId", 128)),
+  handle(IPC.duplicateTab, (record, _event, tabId) =>
+    record.controller.duplicateTab(readString(tabId, "tabId", 128)),
   );
-  handle(IPC.pinTab, (_event, tabId, pinned) =>
-    browser.setTabPinned(
+  handle(IPC.pinTab, (record, _event, tabId, pinned) =>
+    record.controller.setTabPinned(
       readString(tabId, "tabId", 128),
       readBoolean(pinned, "pinned tab state"),
     ),
   );
-  handle(IPC.reorderTab, (_event, tabId, targetTabId) =>
-    browser.reorderTab(
+  handle(IPC.reorderTab, (record, _event, tabId, targetTabId) =>
+    record.controller.reorderTab(
       readString(tabId, "tabId", 128),
       readString(targetTabId, "target tabId", 128),
     ),
   );
-  handle(IPC.closeOtherTabs, (_event, tabId) =>
-    browser.closeOtherTabs(readString(tabId, "tabId", 128)),
+  handle(IPC.closeOtherTabs, (record, _event, tabId) =>
+    record.controller.closeOtherTabs(readString(tabId, "tabId", 128)),
   );
-  handle(IPC.closeTabsToRight, (_event, tabId) =>
-    browser.closeTabsToRight(readString(tabId, "tabId", 128)),
+  handle(IPC.closeTabsToRight, (record, _event, tabId) =>
+    record.controller.closeTabsToRight(readString(tabId, "tabId", 128)),
   );
-  handle(IPC.moveTabToNewWindow, (_event, tabId) =>
-    browser.moveTabToNewWindow(readString(tabId, "tabId", 128)),
+  handle(IPC.moveTabToNewWindow, (record, _event, tabId) =>
+    record.controller.moveTabToNewWindow(readString(tabId, "tabId", 128)),
   );
-  handle(IPC.switchTab, (_event, tabId) =>
-    browser.switchTab(readString(tabId, "tabId", 128)),
+  handle(IPC.toggleTabMuted, (record, _event, tabId) =>
+    record.controller.toggleTabMuted(readString(tabId, "tabId", 128)),
   );
-  handle(IPC.navigate, (_event, input) =>
-    browser.navigateActive(readString(input, "navigation input", 4096)),
+  handle(IPC.switchTab, (record, _event, tabId) =>
+    record.controller.switchTab(readString(tabId, "tabId", 128)),
   );
-  handle(IPC.goHome, () => browser.goHome());
-  handle(IPC.goBack, () => browser.goBack());
-  handle(IPC.goForward, () => browser.goForward());
-  handle(IPC.reload, () => browser.reload(false));
-  handle(IPC.stopLoading, () => browser.stopLoading());
-  handle(IPC.hardReload, () => browser.reload(true));
-  handle(IPC.nextTab, () => browser.nextTab());
-  handle(IPC.previousTab, () => browser.previousTab());
-  handle(IPC.toggleBookmark, () => browser.toggleCurrentBookmark());
-  handle(IPC.removeBookmark, (_event, bookmarkId) =>
-    browser.removeBookmark(readString(bookmarkId, "bookmarkId", 128)),
+  handle(IPC.navigate, (record, _event, input) =>
+    record.controller.navigateActive(readString(input, "navigation input", 4096)),
   );
-  handle(IPC.openBookmark, (_event, bookmarkId) =>
-    browser.openBookmark(readString(bookmarkId, "bookmarkId", 128)),
+  handle(IPC.goHome, (record) => record.controller.goHome());
+  handle(IPC.goBack, (record) => record.controller.goBack());
+  handle(IPC.goForward, (record) => record.controller.goForward());
+  handle(IPC.reload, (record) => record.controller.reload(false));
+  handle(IPC.stopLoading, (record) => record.controller.stopLoading());
+  handle(IPC.hardReload, (record) => record.controller.reload(true));
+  handle(IPC.nextTab, (record) => record.controller.nextTab());
+  handle(IPC.previousTab, (record) => record.controller.previousTab());
+  handle(IPC.toggleBookmark, (record) => record.controller.toggleCurrentBookmark());
+  handle(IPC.removeBookmark, (record, _event, bookmarkId) =>
+    record.controller.removeBookmark(readString(bookmarkId, "bookmarkId", 128)),
   );
-  handle(IPC.clearHistory, () => browser.clearHistory());
-  handle(IPC.openHistoryEntry, (_event, entryId) =>
-    browser.openHistoryEntry(readString(entryId, "entryId", 128)),
+  handle(IPC.openBookmark, (record, _event, bookmarkId) =>
+    record.controller.openBookmark(readString(bookmarkId, "bookmarkId", 128)),
   );
-  handle(IPC.updateSettings, (_event, partial) =>
-    browser.updateSettings(readSettingsPatch(partial)),
+  handle(IPC.clearHistory, (record) => record.controller.clearHistory());
+  handle(IPC.openHistoryEntry, (record, _event, entryId) =>
+    record.controller.openHistoryEntry(readString(entryId, "entryId", 128)),
   );
-  handle(IPC.clearBrowserData, async () => {
-    await browser.clearBrowserData();
+  handle(IPC.updateSettings, (record, _event, partial) => {
+    const patch = readSettingsPatch(partial);
+    record.controller.updateSettings(patch);
+    syncSettingsToOtherWindows(record);
   });
-  handle(IPC.clearNetworkCache, async () => {
-    await browser.clearNetworkCache();
+  handle(IPC.clearBrowserData, async (record) => {
+    await record.controller.clearBrowserData();
   });
-  handle(IPC.resetSettings, () => browser.resetSettings());
+  handle(IPC.clearNetworkCache, async (record) => {
+    await record.controller.clearNetworkCache();
+  });
+  handle(IPC.resetSettings, (record) => {
+    record.controller.resetSettings();
+    syncSettingsToOtherWindows(record);
+  });
   handle(IPC.getRuntimeInfo, () => getRuntimeInfo());
-  handle(IPC.openShellDevTools, () => window.webContents.openDevTools({ mode: "detach" }));
+  handle(IPC.openShellDevTools, (record) => record.window.webContents.openDevTools({ mode: "detach" }));
   handle(IPC.relaunchApp, () => {
     app.relaunch();
     app.exit(0);
   });
-  handle(IPC.getUpdateStatus, () => updates.getStatus());
-  handle(IPC.checkForUpdates, async () => updates.checkForUpdates());
-  handle(IPC.downloadUpdate, async () => updates.downloadUpdate());
-  handle(IPC.installUpdate, () => updates.installUpdate());
-  handle(IPC.openReleasesPage, async () => {
-    await updates.openReleasesPage();
+  handle(IPC.getUpdateStatus, (record) => record.updateManager.getStatus());
+  handle(IPC.checkForUpdates, async (record) => record.updateManager.checkForUpdates());
+  handle(IPC.downloadUpdate, async (record) => record.updateManager.downloadUpdate());
+  handle(IPC.installUpdate, (record) => record.updateManager.installUpdate());
+  handle(IPC.openReleasesPage, async (record) => {
+    await record.updateManager.openReleasesPage();
   });
-  handle(IPC.openDownload, async (_event, downloadId) => {
-    await browser.openDownload(readString(downloadId, "downloadId", 128));
+  handle(IPC.openDownload, async (record, _event, downloadId) => {
+    await record.controller.openDownload(readString(downloadId, "downloadId", 128));
   });
-  handle(IPC.revealDownload, (_event, downloadId) =>
-    browser.revealDownload(readString(downloadId, "downloadId", 128)),
+  handle(IPC.revealDownload, (record, _event, downloadId) =>
+    record.controller.revealDownload(readString(downloadId, "downloadId", 128)),
   );
-  handle(IPC.chooseDownloadFolder, async () => browser.chooseDownloadFolder());
-  handle(IPC.openDownloadsFolder, async () => {
-    await browser.openDownloadsFolder();
+  handle(IPC.chooseDownloadFolder, async (record) => {
+    const result = await record.controller.chooseDownloadFolder();
+    syncSettingsToOtherWindows(record);
+    return result;
   });
-  handle(IPC.clearDownloads, () => browser.clearDownloads());
-  handle(IPC.chooseNewTabCustomImage, async () => browser.chooseNewTabCustomImage());
-  handle(IPC.removeNewTabCustomImage, () => browser.removeNewTabCustomImage());
-  handle(IPC.clearBookmarks, () => browser.clearBookmarks());
-  handle(IPC.loadUnpackedExtension, async () => browser.loadUnpackedExtension());
-  handle(IPC.validateUnpackedExtension, async () => browser.validateUnpackedExtension());
-  handle(IPC.setExtensionEnabled, (_event, extensionId, enabled) =>
-    browser.setExtensionEnabled(
+  handle(IPC.openDownloadsFolder, async (record) => {
+    await record.controller.openDownloadsFolder();
+  });
+  handle(IPC.clearDownloads, (record) => record.controller.clearDownloads());
+  handle(IPC.chooseNewTabCustomImage, async (record) => {
+    const result = await record.controller.chooseNewTabCustomImage();
+    syncSettingsToOtherWindows(record);
+    return result;
+  });
+  handle(IPC.removeNewTabCustomImage, (record) => {
+    record.controller.removeNewTabCustomImage();
+    syncSettingsToOtherWindows(record);
+  });
+  handle(IPC.clearBookmarks, (record) => record.controller.clearBookmarks());
+  handle(IPC.loadUnpackedExtension, async (record) => record.controller.loadUnpackedExtension());
+  handle(IPC.validateUnpackedExtension, async (record) => record.controller.validateUnpackedExtension());
+  handle(IPC.setExtensionEnabled, (record, _event, extensionId, enabled) =>
+    record.controller.setExtensionEnabled(
       readString(extensionId, "extension id", 128),
       readBoolean(enabled, "extension enabled state"),
     ),
   );
-  handle(IPC.removeExtension, (_event, extensionId) =>
-    browser.removeExtension(readString(extensionId, "extension id", 128)),
+  handle(IPC.removeExtension, (record, _event, extensionId) =>
+    record.controller.removeExtension(readString(extensionId, "extension id", 128)),
   );
-  handle(IPC.reloadExtensions, () => browser.reloadExtensions());
-  handle(IPC.openExtensionsFolder, async () => {
-    await browser.openExtensionsFolder();
+  handle(IPC.reloadExtensions, (record) => record.controller.reloadExtensions());
+  handle(IPC.openExtensionsFolder, async (record) => {
+    await record.controller.openExtensionsFolder();
   });
-  handle(IPC.listExtensionStore, async () => browser.listExtensionStore());
-  handle(IPC.installStoreExtension, async (_event, extensionId) =>
-    browser.installStoreExtension(readString(extensionId, "extension id", 128)),
+  handle(IPC.listExtensionStore, async (record) => record.controller.listExtensionStore());
+  handle(IPC.installStoreExtension, async (record, _event, extensionId) =>
+    record.controller.installStoreExtension(readString(extensionId, "extension id", 128)),
   );
-  handle(IPC.openExtensionPanel, (_event, extensionId) =>
-    browser.openExtensionPanel(readString(extensionId, "extension id", 128)),
+  handle(IPC.openExtensionPanel, (record, _event, extensionId) =>
+    record.controller.openExtensionPanel(readString(extensionId, "extension id", 128)),
   );
-  handle(IPC.invokeExtensionApi, (_event, extensionId, request) =>
-    browser.invokeExtensionApi(
+  handle(IPC.invokeExtensionApi, (record, _event, extensionId, request) =>
+    record.controller.invokeExtensionApi(
       readString(extensionId, "extension id", 128),
       readExtensionApiRequest(request),
     ),
   );
-  handle(IPC.logExtensionRuntimeMessage, (_event, extensionId, level, message) =>
-    browser.logExtensionRuntimeMessage(
+  handle(IPC.logExtensionRuntimeMessage, (record, _event, extensionId, level, message) =>
+    record.controller.logExtensionRuntimeMessage(
       readString(extensionId, "extension id", 128),
       readExtensionLogLevel(level),
       readString(message, "extension runtime message", 300),
     ),
   );
-  handle(IPC.clearExtensionErrors, (_event, extensionId) =>
-    browser.clearExtensionErrors(
+  handle(IPC.clearExtensionErrors, (record, _event, extensionId) =>
+    record.controller.clearExtensionErrors(
       extensionId === undefined ? undefined : readString(extensionId, "extension id", 128),
     ),
   );
-  handle(IPC.minimizeWindow, () => window.minimize());
-  handle(IPC.toggleMaximizeWindow, () => {
-    if (window.isMaximized()) {
-      window.unmaximize();
+  handle(IPC.minimizeWindow, (record) => record.window.minimize());
+  handle(IPC.toggleMaximizeWindow, (record) => {
+    if (record.window.isMaximized()) {
+      record.window.unmaximize();
     } else {
-      window.maximize();
+      record.window.maximize();
     }
   });
-  handle(IPC.closeWindow, () => window.close());
-  handle(IPC.closeWindowWithBehavior, (_event, discardSession) => {
-    browser.prepareForWindowClose(readBoolean(discardSession, "discard session close state"));
-    allowWindowClose = true;
-    window.close();
+  handle(IPC.closeWindow, (record) => record.window.close());
+  handle(IPC.closeWindowWithBehavior, (record, _event, discardSession) => {
+    record.controller.prepareForWindowClose(readBoolean(discardSession, "discard session close state"));
+    record.allowWindowClose = true;
+    record.window.close();
   });
+}
+
+function getRecordForEvent(event: IpcMainInvokeEvent): WindowRecord {
+  const record = windowRecords.get(event.sender.id);
+  if (!record) {
+    throw new Error("Rejected IPC call from untrusted sender.");
+  }
+
+  return record;
+}
+
+function syncSettingsToOtherWindows(source: WindowRecord): void {
+  const settings = source.controller.getState().settings;
+  for (const record of windowRecords.values()) {
+    if (record.id !== source.id) {
+      record.controller.syncSettings(settings);
+    }
+  }
+}
+
+function getInitialWindowBounds(
+  storedBounds: BrowserWindowBounds | undefined,
+  workArea: { width: number; height: number },
+): BrowserWindowBounds {
+  const fallbackWidth = Math.min(1320, Math.max(940, Math.floor(workArea.width * 0.9)));
+  const fallbackHeight = Math.min(860, Math.max(620, Math.floor(workArea.height * 0.9)));
+
+  if (!storedBounds) {
+    return {
+      width: fallbackWidth,
+      height: fallbackHeight,
+    };
+  }
+
+  return {
+    ...storedBounds,
+    width: Math.min(workArea.width, Math.max(940, storedBounds.width)),
+    height: Math.min(workArea.height, Math.max(620, storedBounds.height)),
+  };
+}
+
+function offsetBounds(bounds: BrowserWindowBounds): BrowserWindowBounds {
+  return {
+    x: typeof bounds.x === "number" ? bounds.x + 28 : undefined,
+    y: typeof bounds.y === "number" ? bounds.y + 28 : undefined,
+    width: bounds.width,
+    height: bounds.height,
+  };
 }
 
 function readString(value: unknown, fieldName: string, maxLength: number): string {
@@ -1058,7 +1177,7 @@ function toMegabytes(bytes: number): number {
 
 function applyStartupHardwareAccelerationPreference(): void {
   try {
-    if (!new StorageService().load().settings.hardwareAcceleration) {
+    if (!storage.load().settings.hardwareAcceleration) {
       app.disableHardwareAcceleration();
     }
   } catch {
@@ -1068,7 +1187,8 @@ function applyStartupHardwareAccelerationPreference(): void {
 
 app.whenReady().then(() => {
   configureSecurity();
-  createWindow();
+  registerIpcHandlers();
+  createInitialWindows();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

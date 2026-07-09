@@ -278,6 +278,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
         onCloseOtherTabs={(tabId) => void window.ultraX.closeOtherTabs(tabId)}
         onCloseTabsToRight={(tabId) => void window.ultraX.closeTabsToRight(tabId)}
         onMoveTabToNewWindow={(tabId) => void window.ultraX.moveTabToNewWindow(tabId)}
+        onToggleTabMuted={(tabId) => void window.ultraX.toggleTabMuted(tabId)}
         onMinimize={() => void window.ultraX.minimizeWindow()}
         onToggleMaximize={() => void window.ultraX.toggleMaximizeWindow()}
         onCloseWindow={closeWindow}

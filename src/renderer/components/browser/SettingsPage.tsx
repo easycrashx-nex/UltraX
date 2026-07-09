@@ -486,7 +486,7 @@ export function SettingsPage({
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold">UltraX Settings</h1>
             <p className="truncate text-xs text-muted-foreground">
-              v1.0.8 premium desktop controls for browsing, privacy, updates, extensions, and release diagnostics.
+              v1.0.9 premium desktop controls for browsing, privacy, updates, extensions, and release diagnostics.
             </p>
           </div>
         </div>
@@ -531,6 +531,7 @@ export function SettingsPage({
                     <button
                       key={category.id}
                       type="button"
+                      data-testid={`settings-category-${category.id}`}
                       onClick={() => onCategoryChange(category.id)}
                       className={cn(
                         "settings-nav-item group relative flex min-h-11 items-center gap-3 rounded-xl px-3 text-left outline-none transition duration-200",
@@ -707,7 +708,7 @@ function CategoryContent({
     generatedAt: new Date().toISOString(),
     app: {
       name: runtimeInfo?.appName ?? "UltraX",
-      version: runtimeInfo?.appVersion ?? "1.0.8",
+      version: runtimeInfo?.appVersion ?? "1.0.9",
       electron: runtimeInfo?.electronVersion ?? "Unknown",
       chromium: runtimeInfo?.chromiumVersion ?? "Unknown",
       node: runtimeInfo?.nodeVersion ?? "Unknown",
@@ -954,7 +955,7 @@ function CategoryContent({
           </SettingSection>
           <StatusCard
             title="Release status"
-            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.8"} is running in ${
+            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.9"} is running in ${
               runtimeInfo?.buildType ?? "development"
             } mode.`}
             icon={<Sparkles aria-hidden="true" />}
@@ -1664,7 +1665,7 @@ function CategoryContent({
             <ComingSoonRow label="Add profile" detail="Separate profile storage is planned for v1.1." />
             <ComingSoonRow label="Guest mode" detail="Requires a separate temporary session partition." />
           </SettingSection>
-          <EmptyFeature title="Profiles are coming next" detail="v1.0.8 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
+          <EmptyFeature title="Profiles are coming next" detail="v1.0.9 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
         </>
       );
 
@@ -1690,7 +1691,7 @@ function CategoryContent({
             <InfoRow label="What extensions are" detail="Browser-level add-ons with scoped permissions for tabs, sidebar, and local browser features." />
             <ComingSoonRow label="Plugin marketplace" detail="Requires signed native module loading and a separate trust boundary." />
           </SettingSection>
-          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.0.8 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
+          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.0.9 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
         </>
       );
 
@@ -2290,7 +2291,7 @@ function CategoryContent({
           )}
 
           <SettingSection title="Diagnostics" detail="Local performance information safe to copy or export.">
-            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.8"}`} />
+            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.9"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2328,14 +2329,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset performance settings"
-              detail="Restores only this Performance page to v1.0.8 defaults."
+              detail="Restores only this Performance page to v1.0.9 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset performance settings?",
-                  "Only the Performance page settings will return to the v1.0.8 defaults.",
+                  "Only the Performance page settings will return to the v1.0.9 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultPerformanceSettings),
                 )
@@ -2431,7 +2432,7 @@ function CategoryContent({
             onAction={() =>
               requestConfirm(
                 "Reset all UltraX settings?",
-                "This restores preferences to the v1.0.8 defaults.",
+                "This restores preferences to the v1.0.9 defaults.",
                 "Reset",
                 onResetSettings,
               )
@@ -2444,7 +2445,7 @@ function CategoryContent({
     case "updates": {
       const update = updateStatus ?? {
         status: "idle",
-        currentVersion: runtimeInfo?.appVersion ?? "1.0.8",
+        currentVersion: runtimeInfo?.appVersion ?? "1.0.9",
         channel: settings.updates.channel,
         updateAvailable: false,
         lastCheckedAt: settings.updates.lastCheckedAt,
@@ -2609,7 +2610,7 @@ function CategoryContent({
       return (
         <>
           <SettingSection title="About UltraX" detail="Build and engine information.">
-            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.8"}`} />
+            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.9"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2624,7 +2625,7 @@ function CategoryContent({
             <InfoRow label="License" detail="Project-local MVP placeholder." />
           </SettingSection>
           <StatusCard
-            title="UltraX Browser v1.0.8"
+            title="UltraX Browser v1.0.9"
             detail="Search suggestions, release trust hygiene, GitHub Releases updates, native Extensions, and preserved Chromium browser security."
             icon={<Sparkles aria-hidden="true" />}
           />

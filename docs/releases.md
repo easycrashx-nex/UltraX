@@ -5,7 +5,7 @@
 Use patch releases for focused improvements:
 
 ```powershell
-npm version 1.0.8 --no-git-tag-version
+npm version 1.0.9 --no-git-tag-version
 ```
 
 Update `CHANGELOG.md` before tagging.
@@ -15,6 +15,7 @@ Update `CHANGELOG.md` before tagging.
 ```powershell
 npm ci
 npm run typecheck
+npm run test:e2e
 npm run build
 npm run dist:win
 ```
@@ -43,8 +44,8 @@ Skip the command if `origin` already points to that URL.
 The release workflow runs on tags:
 
 ```powershell
-git tag v1.0.8
-git push origin v1.0.8
+git tag v1.0.9
+git push origin v1.0.9
 ```
 
 The workflow:
@@ -58,6 +59,17 @@ The workflow:
 - verifies `latest.yml` exists and references the Setup installer
 - generates SHA256 checksums
 - re-uploads installer, portable EXE, blockmap, `latest.yml`, and checksum files with `--clobber`
+
+## E2E Tests
+
+UltraX includes a small Electron Playwright suite for tab UX, settings persistence, and Updates page smoke coverage:
+
+```powershell
+npm run test:e2e
+npm run test:e2e:headed
+```
+
+The GitHub Actions E2E workflow is manual (`workflow_dispatch`) so normal build and release jobs are not blocked by GUI-runner flakiness.
 
 ## Required Secrets
 

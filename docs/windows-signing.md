@@ -34,6 +34,9 @@ WIN_CSC_KEY_PASSWORD=<certificate-password>
 ```
 
 These values must be configured as GitHub Actions secrets. Do not commit certificate files, passwords, private keys, or token values.
+`CSC_LINK` and `CSC_KEY_PASSWORD` are also recognized by electron-builder, but UltraX standardizes on the Windows-specific `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` names in GitHub Actions.
+
+For EV or hardware-backed signing, use the certificate-store or provider-specific setup required by the certificate vendor and keep the private key on the token/HSM. Do not export or commit EV key material.
 
 ## Current Config
 
@@ -42,9 +45,11 @@ The app currently includes clean Windows metadata:
 - stable `appId`: `com.ultrax.browser`
 - product name: `UltraX Browser`
 - publisher name: `UltraX`
+- executable name: `UltraX Browser`
 - installer target: NSIS
 - requested execution level: `asInvoker`
 - no forced elevation
+- SHA256 release checksums
 - GitHub Releases update provider over HTTPS
 
 Until a real signing certificate is configured, builds should be treated as unsigned. `verifyUpdateCodeSignature` is disabled so unsigned updater testing remains possible. When production signing is in place and verified, revisit this setting.
@@ -54,7 +59,7 @@ Until a real signing certificate is configured, builds should be treated as unsi
 After configuring signing secrets, download the release artifacts and check signatures:
 
 ```powershell
-Get-AuthenticodeSignature "UltraX-Browser-Setup-1.0.8-x64.exe"
+Get-AuthenticodeSignature "UltraX-Browser-Setup-1.0.9-x64.exe"
 Get-AuthenticodeSignature "UltraX Browser.exe"
 ```
 
@@ -63,3 +68,13 @@ The status should be `Valid`, and the signer should match the expected publisher
 ## Reputation Notes
 
 Reputation improves with consistent signing, stable publisher identity, clean releases, and user installs over time. Do not use packers, obfuscation, antivirus bypasses, hidden persistence, or unsigned random executable downloads to avoid warnings.
+
+## False Positive Submission
+
+If Microsoft Defender flags a clean signed or unsigned UltraX build, submit the exact release file to Microsoft Security Intelligence:
+
+```txt
+https://www.microsoft.com/en-us/wdsi/filesubmission
+```
+
+Include the release URL, SHA256 checksum, app version, and a short note that UltraX is an Electron browser distributed through GitHub Releases.

@@ -27,6 +27,7 @@ export type UltraXApi = {
   closeOtherTabs: (tabId: string) => Promise<void>;
   closeTabsToRight: (tabId: string) => Promise<void>;
   moveTabToNewWindow: (tabId: string) => Promise<void>;
+  toggleTabMuted: (tabId: string) => Promise<void>;
   switchTab: (tabId: string) => Promise<void>;
   navigate: (input: string) => Promise<void>;
   goHome: () => Promise<void>;

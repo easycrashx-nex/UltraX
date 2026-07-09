@@ -252,7 +252,23 @@ export type BrowserTab = {
   canGoForward: boolean;
   isNewTab: boolean;
   isPinned?: boolean;
+  isMuted?: boolean;
+  isAudible?: boolean;
   error?: string;
+};
+
+export type BrowserWindowBounds = {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+};
+
+export type BrowserWindowSession = {
+  id: string;
+  tabs: BrowserTab[];
+  activeTabId: string | null;
+  bounds?: BrowserWindowBounds;
 };
 
 export type Bookmark = {
@@ -389,8 +405,11 @@ export type RuntimeInfo = {
 };
 
 export type BrowserState = {
+  windowId: string;
   tabs: BrowserTab[];
   activeTabId: string | null;
+  windows: BrowserWindowSession[];
+  lastActiveWindowId?: string;
   bookmarks: Bookmark[];
   history: HistoryEntry[];
   downloads: DownloadItem[];

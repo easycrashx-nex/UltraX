@@ -1,10 +1,13 @@
 {
   "name": "ultrax",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "productName": "UltraX Browser",
   "description": "UltraX Browser is a custom Electron desktop browser with React, TypeScript, Tailwind CSS, and WebContentsView tabs.",
-  "author": "UltraX",
+  "author": {
+    "name": "UltraX",
+    "url": "https://github.com/easycrashx-nex/UltraX"
+  },
   "license": "UNLICENSED",
   "homepage": "https://github.com/easycrashx-nex/UltraX",
   "repository": {
@@ -24,6 +27,8 @@
     "dist:win": "npm run build && electron-builder --win nsis portable --x64 --publish never && npm run checksum:release",
     "dist:win:arm64": "npm run build && electron-builder --win nsis portable --arm64 --publish never && npm run checksum:release",
     "checksum:release": "node scripts/generate-release-checksums.mjs",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:headed": "npm run build && playwright test --headed",
     "release:win": "npm run dist:win"
   },
   "dependencies": {
@@ -38,6 +43,7 @@
     "three": "^0.178.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.1.11",
     "@types/node": "^22.13.14",
     "@types/react": "^19.1.8",
@@ -48,6 +54,7 @@
     "cross-env": "^10.1.0",
     "electron": "^43.1.0",
     "electron-builder": "^26.15.3",
+    "playwright": "^1.61.1",
     "tailwindcss": "^4.1.11",
     "typescript": "^5.8.3",
     "vite": "^7.0.4",
@@ -57,6 +64,7 @@
     "appId": "com.ultrax.browser",
     "productName": "UltraX Browser",
     "copyright": "Copyright 2026 UltraX",
+    "executableName": "UltraX Browser",
     "asar": true,
     "directories": {
       "buildResources": "build",

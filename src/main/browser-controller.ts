@@ -10,6 +10,7 @@ import {
   type DownloadItem as ElectronDownloadItem,
   type Session,
   type WebContents,
+  type WebContentsAudioStateChangedEventParams,
 } from "electron";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -20,6 +21,7 @@ import type {
   BrowserSettings,
   BrowserState,
   BrowserTab,
+  BrowserWindowSession,
   DownloadItem,
   ExtensionApiRequest,
   ExtensionApiResponse,
@@ -48,6 +50,12 @@ const CHROME_HEIGHT = 108;
 const MAX_HISTORY_ENTRIES = 1000;
 const MAX_DOWNLOADS = 50;
 
+type BrowserControllerOptions = {
+  windowId?: string;
+  initialSession?: BrowserWindowSession;
+  onCreateWindowFromTab?: (tab: BrowserTab, sourceWindowId: string) => void;
+};
+
 export class BrowserController {
   private readonly views = new Map<string, WebContentsView>();
   private readonly browserSession: Session;
@@ -56,13 +64,20 @@ export class BrowserController {
   private attachedView: WebContentsView | null = null;
   private insets: ViewInsets = { right: 0, bottom: 0 };
   private readonly onWindowBoundsChanged = () => this.layoutActiveView();
+  private readonly windowId: string;
+  private readonly initialSession?: BrowserWindowSession;
 
   constructor(
     private readonly window: BrowserWindow,
     private readonly storage: StorageService,
+    private readonly options: BrowserControllerOptions = {},
   ) {
     this.browserSession = session.fromPartition(WEB_PARTITION);
     this.state = this.storage.load();
+    this.windowId =
+      options.windowId ?? options.initialSession?.id ?? this.state.windowId ?? randomUUID();
+    this.initialSession = options.initialSession;
+    this.state.windowId = this.windowId;
   }
 
   init(): void {
@@ -241,10 +256,53 @@ export class BrowserController {
     }
   }
 
-  moveTabToNewWindow(_tabId: string): void {
-    // TODO(v1.0.9): split BrowserController state by window before moving
-    // WebContentsView ownership across BrowserWindow instances.
-    throw new Error("Move Tab to New Window is prepared but not enabled in v1.0.8.");
+  moveTabToNewWindow(tabId: string): void {
+    const index = this.state.tabs.findIndex((tab) => tab.id === tabId);
+    if (index === -1) {
+      return;
+    }
+
+    const [tab] = this.state.tabs.splice(index, 1);
+    const movedTab = this.cloneTabForWindowMove(tab);
+    const view = this.views.get(tab.id);
+    if (view) {
+      movedTab.isMuted = view.webContents.isAudioMuted();
+      movedTab.isAudible = view.webContents.isCurrentlyAudible();
+      this.detachView(view);
+      view.webContents.close({ waitForBeforeUnload: false });
+      this.views.delete(tab.id);
+    }
+
+    if (this.state.tabs.length === 0) {
+      const replacement = this.createTabRecord();
+      this.state.tabs.push(replacement);
+      this.state.activeTabId = replacement.id;
+    } else if (this.state.activeTabId === tabId) {
+      const nextTab = this.state.tabs[Math.max(0, index - 1)];
+      this.state.activeTabId = nextTab?.id ?? this.state.tabs[0]?.id ?? null;
+    }
+
+    this.attachActiveView();
+    this.persistAndEmit();
+    this.options.onCreateWindowFromTab?.(movedTab, this.windowId);
+  }
+
+  toggleTabMuted(tabId: string): void {
+    const tab = this.state.tabs.find((item) => item.id === tabId);
+    if (!tab) {
+      return;
+    }
+
+    const view = this.views.get(tab.id);
+    const nextMuted = !(view?.webContents.isAudioMuted() ?? tab.isMuted ?? false);
+    if (view) {
+      view.webContents.setAudioMuted(nextMuted);
+    }
+
+    this.patchTab(tab.id, {
+      isMuted: nextMuted,
+      isAudible: view?.webContents.isCurrentlyAudible() ?? tab.isAudible ?? false,
+    });
   }
 
   switchTab(tabId: string): void {
@@ -405,6 +463,15 @@ export class BrowserController {
     this.applySettingsToViews();
     this.applyRetentionPolicies();
     this.persistAndEmit();
+  }
+
+  syncSettings(settings: BrowserSettings): void {
+    this.state.settings = {
+      ...settings,
+      browserName: "UltraX",
+    };
+    this.applySettingsToViews();
+    this.emitState();
   }
 
   resetSettings(): void {
@@ -779,6 +846,8 @@ export class BrowserController {
     if (discardSession) {
       this.state.tabs = [];
       this.state.activeTabId = null;
+      this.state.windows = [];
+      this.state.lastActiveWindowId = undefined;
       this.state.settings = {
         ...this.state.settings,
         startupBehavior: "new-tab",
@@ -788,7 +857,7 @@ export class BrowserController {
       return;
     }
 
-    this.storage.save(this.state);
+    this.storage.saveWindowState(this.windowId, this.state, this.window.getBounds());
   }
 
   focusAddressBar(): void {
@@ -799,27 +868,21 @@ export class BrowserController {
   private restoreTabs(): void {
     this.applyRetentionPolicies();
 
-    const persistedTabs = this.state.tabs;
-    const persistedActiveTabId = this.state.activeTabId;
+    const persistedTabs = this.initialSession?.tabs ?? this.state.tabs;
+    const persistedActiveTabId = this.initialSession?.activeTabId ?? this.state.activeTabId;
 
     this.state.tabs = [];
     this.state.activeTabId = null;
 
     const shouldRestoreSession =
+      Boolean(this.initialSession) ||
       this.state.settings.startupBehavior === "restore-session";
 
     if (shouldRestoreSession && persistedTabs.length > 0) {
       // TODO: Apply lazyRestoreSession/loadTabsOnDemand/restoreActiveTabOnly
       // when restored tabs can exist as unloaded WebContents records.
       for (const persistedTab of persistedTabs) {
-        const tab = this.createTabRecord(
-          persistedTab.isNewTab || !isSafeWebUrl(persistedTab.url)
-            ? undefined
-            : persistedTab.url,
-          persistedTab.title,
-        );
-        tab.favicon = persistedTab.favicon;
-        tab.isPinned = Boolean(persistedTab.isPinned);
+        const tab = this.createTabRecordFromSnapshot(persistedTab);
         this.state.tabs.push(tab);
 
         if (!tab.isNewTab) {
@@ -876,6 +939,39 @@ export class BrowserController {
       canGoForward: false,
       isNewTab,
       isPinned: false,
+      isMuted: false,
+      isAudible: false,
+    };
+  }
+
+  private createTabRecordFromSnapshot(snapshot: BrowserTab): BrowserTab {
+    const tab = this.createTabRecord(
+      snapshot.isNewTab || !isSafeWebUrl(snapshot.url) ? undefined : snapshot.url,
+      snapshot.title,
+    );
+    tab.id = snapshot.id || tab.id;
+    tab.favicon = snapshot.favicon;
+    tab.isPinned = Boolean(snapshot.isPinned);
+    tab.isMuted = Boolean(snapshot.isMuted);
+    tab.isAudible = false;
+    tab.error = snapshot.error;
+    return tab;
+  }
+
+  private cloneTabForWindowMove(tab: BrowserTab): BrowserTab {
+    return {
+      id: tab.id,
+      url: tab.url,
+      title: tab.title,
+      favicon: tab.favicon,
+      isLoading: tab.isLoading,
+      canGoBack: false,
+      canGoForward: false,
+      isNewTab: tab.isNewTab,
+      isPinned: Boolean(tab.isPinned),
+      isMuted: Boolean(tab.isMuted),
+      isAudible: false,
+      error: tab.error,
     };
   }
 
@@ -901,6 +997,8 @@ export class BrowserController {
       },
     });
 
+    const tab = this.state.tabs.find((item) => item.id === tabId);
+    view.webContents.setAudioMuted(Boolean(tab?.isMuted));
     view.webContents.setZoomFactor(this.state.settings.pageZoom);
 
     view.webContents.setWindowOpenHandler(({ url }) => {
@@ -997,6 +1095,13 @@ export class BrowserController {
 
     view.webContents.on("page-favicon-updated", (_event, favicons) => {
       this.patchTab(tabId, { favicon: favicons[0] });
+    });
+
+    view.webContents.on("audio-state-changed", (event: ElectronEvent<WebContentsAudioStateChangedEventParams>) => {
+      this.patchTab(tabId, {
+        isAudible: event.audible,
+        isMuted: view.webContents.isAudioMuted(),
+      });
     });
 
     view.webContents.on("did-navigate", (_event, url) => {
@@ -1128,6 +1233,8 @@ export class BrowserController {
       canGoBack: false,
       canGoForward: false,
       isNewTab: true,
+      isMuted: false,
+      isAudible: false,
       error: undefined,
     });
 
@@ -1217,6 +1324,8 @@ export class BrowserController {
       isLoading: patch.isLoading,
       canGoBack: contents.navigationHistory.canGoBack(),
       canGoForward: contents.navigationHistory.canGoForward(),
+      isMuted: contents.isAudioMuted(),
+      isAudible: contents.isCurrentlyAudible(),
       error: patch.error,
       isNewTab: false,
     });
@@ -1524,7 +1633,12 @@ export class BrowserController {
   private readonly onDownloadStarted = (
     _event: ElectronEvent,
     item: ElectronDownloadItem,
+    contents?: WebContents,
   ) => {
+    if (contents && !this.ownsWebContents(contents)) {
+      return;
+    }
+
     const downloadDirectory = this.resolveDownloadDirectory();
     if (this.state.settings.askWhereToSaveDownloads) {
       item.setSaveDialogOptions({
@@ -1566,8 +1680,12 @@ export class BrowserController {
     });
   };
 
+  private ownsWebContents(contents: WebContents): boolean {
+    return [...this.views.values()].some((view) => view.webContents === contents);
+  }
+
   private persistAndEmit(): void {
-    this.storage.save(this.state);
+    this.storage.saveWindowState(this.windowId, this.state, this.window.getBounds());
     this.emitState();
   }
 

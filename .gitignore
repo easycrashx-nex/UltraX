@@ -8,6 +8,8 @@ release/
 out/
 *.blockmap
 latest*.yml
+test-results/
+playwright-report/
 
 # Local Electron/runtime data
 userData/
