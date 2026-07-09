@@ -10,6 +10,13 @@ type UltraXTestApp = {
   userDataDir: string;
 };
 
+type ElementBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 async function launchUltraX(userDataDir?: string): Promise<UltraXTestApp> {
   const resolvedUserDataDir =
     userDataDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), "ultrax-e2e-")));
@@ -71,6 +78,37 @@ async function waitForTabCount(page: Page, count: number): Promise<void> {
   );
 }
 
+async function readVisibleTabBox(page: Page, tabId: string): Promise<ElementBox | null> {
+  return page.locator(`[data-tab-id="${tabId}"]`).evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+
+    return {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    };
+  }).catch(() => null);
+}
+
+async function getVisibleTabBox(page: Page, tabId: string): Promise<ElementBox> {
+  const target = page.locator(`[data-tab-id="${tabId}"]`);
+  await expect(target).toBeVisible();
+  await expect
+    .poll(async () => Boolean(await readVisibleTabBox(page, tabId)), { timeout: 5_000 })
+    .toBe(true);
+
+  const box = await readVisibleTabBox(page, tabId);
+  if (!box) {
+    throw new Error(`Tab ${tabId} is not visible.`);
+  }
+
+  return box;
+}
+
 async function extensionsWorkspaceExists(userDataDir: string): Promise<boolean> {
   const paths = ["extensions", "extensions/installed", "extensions/unpacked", "extensions/samples", "extensions/storage", "extensions/logs"]
     .map((item) => path.join(userDataDir, item));
@@ -85,11 +123,7 @@ async function extensionsWorkspaceExists(userDataDir: string): Promise<boolean> 
 
 async function dragTabTo(page: Page, tabId: string, targetX: number, targetY: number): Promise<void> {
   const source = page.locator(`[data-tab-id="${tabId}"]`);
-  await expect(source).toBeVisible();
-  const sourceBox = await source.boundingBox();
-  if (!sourceBox) {
-    throw new Error(`Tab ${tabId} is not visible.`);
-  }
+  const sourceBox = await getVisibleTabBox(page, tabId);
 
   await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
   await page.mouse.down();
@@ -99,13 +133,7 @@ async function dragTabTo(page: Page, tabId: string, targetX: number, targetY: nu
 }
 
 async function dragTabBefore(page: Page, sourceTabId: string, targetTabId: string): Promise<void> {
-  const target = page.locator(`[data-tab-id="${targetTabId}"]`);
-  await expect(target).toBeVisible();
-  const targetBox = await target.boundingBox();
-  if (!targetBox) {
-    throw new Error(`Tab ${targetTabId} is not visible.`);
-  }
-
+  const targetBox = await getVisibleTabBox(page, targetTabId);
   await dragTabTo(page, sourceTabId, targetBox.x + 3, targetBox.y + targetBox.height / 2);
 }
 
@@ -269,7 +297,7 @@ test("settings persist across an app restart", async () => {
   }
 });
 
-test("fresh settings use v1.1.2 search, suggestions, home, and permission defaults", async () => {
+test("fresh settings use v1.1.3 search, suggestions, home, and permission defaults", async () => {
   const app = await launchUltraX();
 
   try {
@@ -300,6 +328,9 @@ test("tab hover preview appears and disappears", async () => {
 
   try {
     const tab = app.page.getByTestId("browser-tab").first();
+    await expect(tab).not.toHaveAttribute("title", /.+/);
+    await expect(tab).toHaveAttribute("aria-label", /New Tab/);
+
     await tab.hover();
     await expect(app.page.getByTestId("tab-hover-preview")).toBeVisible();
 
@@ -344,7 +375,7 @@ test("updates page opens and renders current version controls", async () => {
     await app.page.getByTestId("settings-category-updates").click();
 
     await expect(app.page.getByText("Current version")).toBeVisible();
-    await expect(app.page.getByText(/UltraX Browser 1\.1\.2/)).toBeVisible();
+    await expect(app.page.getByText(/UltraX Browser 1\.1\.3/)).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Check for Updates" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Download Update" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Install and Restart" })).toBeVisible();

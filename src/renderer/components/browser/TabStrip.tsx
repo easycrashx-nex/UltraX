@@ -80,6 +80,12 @@ type TabDragState = {
 const DRAG_START_THRESHOLD = 5;
 const DROP_CANCEL_Y_MARGIN = 42;
 
+function getTabAccessibleLabel(tab: BrowserTab) {
+  const state = tab.isMuted ? "Muted" : tab.isAudible ? "Playing audio" : null;
+  const title = tab.title || "Untitled tab";
+  return [state, tab.isPinned ? "Pinned" : null, title].filter(Boolean).join(" - ");
+}
+
 export function TabStrip({
   tabs,
   activeTabId,
@@ -102,12 +108,15 @@ export function TabStrip({
 }: TabStripProps) {
   const stripRef = useRef<HTMLDivElement | null>(null);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const tabsRef = useRef(tabs);
   const dragStateRef = useRef<TabDragState | null>(null);
   const suppressClickRef = useRef(false);
   const hoverPreviewTimerRef = useRef<number | null>(null);
   const [dragState, setDragState] = useState<TabDragState | null>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const [preview, setPreview] = useState<TabPreviewState | null>(null);
+
+  tabsRef.current = tabs;
   const menuTab = useMemo(
     () => tabs.find((tab) => tab.id === menu?.tabId),
     [menu?.tabId, tabs],
@@ -189,7 +198,7 @@ export function TabStrip({
 
   const calculateDropIndex = useCallback(
     (tabId: string, isPinned: boolean, pointerX: number) => {
-      const sameGroupTabs = tabs.filter(
+      const sameGroupTabs = tabsRef.current.filter(
         (tab) => Boolean(tab.isPinned) === isPinned && tab.id !== tabId,
       );
 
@@ -219,7 +228,7 @@ export function TabStrip({
 
       return rects.reduce((index, rect) => (pointerX > rect.midpoint ? index + 1 : index), 0);
     },
-    [tabs],
+    [],
   );
 
   const getPreviewTabs = useCallback(
@@ -248,6 +257,7 @@ export function TabStrip({
   const finishTabDrag = useCallback(
     (state: TabDragState) => {
       if (!state.isDragging) {
+        dragStateRef.current = null;
         setDragState(null);
         return;
       }
@@ -259,7 +269,9 @@ export function TabStrip({
           state.currentY <= stripRect.bottom + DROP_CANCEL_Y_MARGIN);
 
       if (droppedNearStrip) {
-        const groupTabs = tabs.filter((tab) => Boolean(tab.isPinned) === state.isPinned);
+        const groupTabs = tabsRef.current.filter(
+          (tab) => Boolean(tab.isPinned) === state.isPinned,
+        );
         const draggedTab = groupTabs.find((tab) => tab.id === state.tabId);
 
         if (draggedTab) {
@@ -291,9 +303,10 @@ export function TabStrip({
       window.setTimeout(() => {
         suppressClickRef.current = false;
       }, 0);
+      dragStateRef.current = null;
       setDragState(null);
     },
-    [onReorderTab, tabs],
+    [onReorderTab],
   );
 
   useEffect(() => {
@@ -316,13 +329,16 @@ export function TabStrip({
           ? calculateDropIndex(previous.tabId, previous.isPinned, event.clientX)
           : previous.dropIndex;
 
-        return {
+        const nextState = {
           ...previous,
           currentX: event.clientX,
           currentY: event.clientY,
           isDragging,
           dropIndex,
         };
+
+        dragStateRef.current = nextState;
+        return nextState;
       });
     };
 
@@ -332,10 +348,18 @@ export function TabStrip({
         return;
       }
 
+      const dx = event.clientX - current.startX;
+      const dy = event.clientY - current.startY;
+      const isDragging = current.isDragging || Math.hypot(dx, dy) >= DRAG_START_THRESHOLD;
+
       finishTabDrag({
         ...current,
         currentX: event.clientX,
         currentY: event.clientY,
+        isDragging,
+        dropIndex: isDragging
+          ? calculateDropIndex(current.tabId, current.isPinned, event.clientX)
+          : current.dropIndex,
       });
     };
 
@@ -348,6 +372,7 @@ export function TabStrip({
       window.setTimeout(() => {
         suppressClickRef.current = false;
       }, 0);
+      dragStateRef.current = null;
       setDragState(null);
     };
 
@@ -409,6 +434,7 @@ export function TabStrip({
       return;
     }
 
+    closePreview();
     const rect = event.currentTarget.getBoundingClientRect();
     const groupTabs = tab.isPinned ? pinnedTabs : normalTabs;
     const dropIndex = Math.max(
@@ -416,9 +442,7 @@ export function TabStrip({
       groupTabs.findIndex((item) => item.id === tab.id),
     );
 
-    setMenu(null);
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDragState({
+    const nextState: TabDragState = {
       tabId: tab.id,
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -432,7 +456,12 @@ export function TabStrip({
       isPinned: Boolean(tab.isPinned),
       isDragging: false,
       dropIndex,
-    });
+    };
+
+    setMenu(null);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStateRef.current = nextState;
+    setDragState(nextState);
   };
 
   const renderTab = (tab: BrowserTab) => {
@@ -445,12 +474,20 @@ export function TabStrip({
         key={tab.id}
         ref={(element) => setTabElement(tab.id, element)}
         type="button"
-        title={`${tab.isMuted ? "Muted - " : tab.isAudible ? "Playing audio - " : ""}${tab.title}`}
+        aria-label={getTabAccessibleLabel(tab)}
+        aria-current={isActive ? "page" : undefined}
         data-testid="browser-tab"
         data-tab-id={tab.id}
         aria-grabbed={isDragPlaceholder}
         onPointerDown={(event) => startTabDrag(tab, event)}
-        onPointerEnter={(event) => schedulePreview(tab, event.currentTarget)}
+        onPointerEnter={(event) => {
+          if (event.buttons !== 0) {
+            closePreview();
+            return;
+          }
+
+          schedulePreview(tab, event.currentTarget);
+        }}
         onPointerLeave={closePreview}
         onClick={() => {
           if (suppressClickRef.current) {

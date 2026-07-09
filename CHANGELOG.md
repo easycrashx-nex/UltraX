@@ -1,5 +1,17 @@
 # UltraX Browser Changelog
 
+## 1.1.3 - Tab Tooltip Patch
+
+### Fixed
+
+- Removed the native Chromium tab title tooltip that could appear as a large floating rectangle over the browser chrome.
+- Preserved tab accessibility labels through `aria-label` while keeping the custom UltraX tab hover preview.
+- Closed pending tab hover previews when starting tab drag interactions to avoid overlapping hover and drag states.
+
+### Tests
+
+- Added E2E coverage to ensure browser tabs no longer expose native `title` tooltips while keeping readable labels.
+
 ## 1.1.2 - Settings, Privacy, Security, Accessibility, and Tab Preview Update
 
 ### Added
