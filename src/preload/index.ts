@@ -9,8 +9,10 @@ import type {
   ExtensionRuntimeLogLevel,
   ExtensionStoreItem,
   ExtensionValidationResult,
+  ExtensionsWorkspaceInfo,
   InstalledExtension,
   RuntimeInfo,
+  TabReorderPlacement,
   UpdateStatusSnapshot,
   ViewInsets,
 } from "../shared/types";
@@ -68,6 +70,7 @@ const IPC = {
   clearBookmarks: "bookmarks:clear",
   loadUnpackedExtension: "extensions:load-unpacked",
   validateUnpackedExtension: "extensions:validate-unpacked",
+  ensureExtensionsWorkspace: "extensions:ensure-workspace",
   setExtensionEnabled: "extensions:set-enabled",
   removeExtension: "extensions:remove",
   reloadExtensions: "extensions:reload",
@@ -95,8 +98,8 @@ const api: UltraXApi = {
   closeTab: (tabId: string) => invoke<void>(IPC.closeTab, tabId),
   duplicateTab: (tabId: string) => invoke<void>(IPC.duplicateTab, tabId),
   pinTab: (tabId: string, pinned: boolean) => invoke<void>(IPC.pinTab, tabId, pinned),
-  reorderTab: (tabId: string, targetTabId: string) =>
-    invoke<void>(IPC.reorderTab, tabId, targetTabId),
+  reorderTab: (tabId: string, targetTabId: string, placement?: TabReorderPlacement) =>
+    invoke<void>(IPC.reorderTab, tabId, targetTabId, placement),
   closeOtherTabs: (tabId: string) => invoke<void>(IPC.closeOtherTabs, tabId),
   closeTabsToRight: (tabId: string) => invoke<void>(IPC.closeTabsToRight, tabId),
   moveTabToNewWindow: (tabId: string) => invoke<void>(IPC.moveTabToNewWindow, tabId),
@@ -158,6 +161,8 @@ const api: UltraXApi = {
 
   clearBookmarks: () => invoke<void>(IPC.clearBookmarks),
 
+  ensureExtensionsWorkspace: () =>
+    invoke<ExtensionsWorkspaceInfo>(IPC.ensureExtensionsWorkspace),
   loadUnpackedExtension: () => invoke<InstalledExtension | null>(IPC.loadUnpackedExtension),
   validateUnpackedExtension: () =>
     invoke<ExtensionValidationResult | null>(IPC.validateUnpackedExtension),

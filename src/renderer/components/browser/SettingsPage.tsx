@@ -12,11 +12,13 @@ import type {
   InstalledExtension,
   NewTabBackground,
   PanelTransparency,
+  PermissionPolicy,
   RuntimeInfo,
   SearchEngine,
   ShaderIntensity,
   ShaderPreset,
   ShaderSpeed,
+  SitePermissionKey,
   StartupBehavior,
   ThemeMode,
   ToolbarDensity,
@@ -89,6 +91,7 @@ type SettingsPageProps = {
   onDownloadUpdate: () => Promise<UpdateStatusSnapshot>;
   onInstallUpdate: () => Promise<UpdateStatusSnapshot>;
   onOpenReleasesPage: () => Promise<void>;
+  onEnsureExtensionsWorkspace: () => Promise<unknown>;
   onLoadUnpackedExtension: () => Promise<InstalledExtension | null>;
   onValidateUnpackedExtension: () => Promise<ExtensionValidationResult | null>;
   onSetExtensionEnabled: (extensionId: string, enabled: boolean) => Promise<void>;
@@ -170,6 +173,38 @@ const categoryGroups: CategoryGroup[] = [
 
 const allCategories = categoryGroups.flatMap((group) => group.items);
 
+const settingsSearchIndex: Record<SettingsCategoryId, string> = {
+  general:
+    "default browser startup behavior close behavior downloads language region launch startup maintenance reset export settings",
+  appearance: "theme glass blur accent shader animation new tab background transparency",
+  browser: "toolbar address bar bookmarks home button tab hover preview chrome",
+  tabs: "tabs pinned reorder close restore hover preview memory",
+  start: "startup restore session specific pages launch",
+  home: "home page new tab custom url google reset appearance",
+  search:
+    "search engine google custom template address bar suggestions local history bookmarks open tabs online provider",
+  downloads: "downloads folder ask where save retention clear",
+  privacy:
+    "privacy browsing data history cache cookies site data do not track third party cookies suggestions close local storage export",
+  security:
+    "security safe browsing https secure connections insecure content dangerous downloads extension unsigned isolation sandbox websecurity",
+  permissions:
+    "permissions camera microphone location notifications clipboard downloads popups redirects site exceptions allow block ask",
+  profiles: "profiles people guest local storage",
+  ai: "ai assistant privacy provider summaries",
+  plugins: "plugins marketplace native modules trust",
+  extensions: "extensions add-ons permissions developer mode store sandbox",
+  performance: "performance shader fps memory saver network diagnostics hardware gpu",
+  accessibility:
+    "accessibility reduced motion animation contrast transparency focus ring text size keyboard links font smoothing",
+  shortcuts: "keyboard shortcuts focus address tab reload back forward",
+  advanced: "advanced developer tools reset diagnostics",
+  updates: "updates github releases updater version channel",
+  about: "about version electron chromium node",
+  bookmarks: "bookmarks saved pages toolbar clear import export",
+  history: "history visited pages retention clear",
+};
+
 const accentColors: Array<[AccentColor, string, string]> = [
   ["blue", "Blue", "bg-blue-500"],
   ["purple", "Purple", "bg-violet-500"],
@@ -201,6 +236,44 @@ const sensitiveExtensionPermissions = new Set<UltraXExtensionPermission>([
   "settings",
   "clipboard",
 ]);
+
+const permissionRows: Array<[SitePermissionKey, string, string]> = [
+  ["camera", "Camera", "Websites must ask before using the camera."],
+  ["microphone", "Microphone", "Websites must ask before using the microphone."],
+  ["location", "Location", "Websites must ask before reading location."],
+  ["notifications", "Notifications", "Websites must ask before showing notifications."],
+  ["clipboard", "Clipboard", "Clipboard access stays behind an explicit permission decision."],
+  ["downloads", "Downloads", "Downloads can ask, allow, or block by default."],
+  ["popups", "Pop-ups and redirects", "Unsafe windows are denied; safe windows open as UltraX tabs."],
+];
+
+const permissionLabels: Record<SitePermissionKey, string> = {
+  camera: "Camera",
+  microphone: "Microphone",
+  location: "Location",
+  notifications: "Notifications",
+  clipboard: "Clipboard",
+  downloads: "Downloads",
+  popups: "Pop-ups",
+  autoplay: "Autoplay",
+  javascript: "JavaScript",
+  images: "Images",
+};
+
+const permissionPolicyLabels: Record<PermissionPolicy, string> = {
+  ask: "Ask before allowing",
+  allow: "Allow",
+  block: "Block",
+};
+
+const defaultSecuritySettings: Partial<BrowserSettings> = {
+  safeBrowsing: true,
+  alwaysUseSecureConnections: true,
+  blockInsecureContent: true,
+  warnDangerousDownloads: true,
+  reviewExtensionPermissions: true,
+  blockUnsignedRemoteExtensions: true,
+};
 
 function formatPermissionList(permissions: UltraXExtensionPermission[]): string {
   return permissions.length > 0 ? permissions.join(", ") : "none";
@@ -376,6 +449,18 @@ function parseSiteExceptions(value: string): string[] {
     .slice(0, 24);
 }
 
+function normalizeSiteHost(value: string): string {
+  const host =
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .split(/[/?#]/)[0]
+      ?.replace(/^www\./, "") ?? "";
+
+  return /^[a-z0-9.-]{1,253}$/.test(host) ? host : "";
+}
+
 export function SettingsPage({
   open,
   activeCategory,
@@ -405,6 +490,7 @@ export function SettingsPage({
   onDownloadUpdate,
   onInstallUpdate,
   onOpenReleasesPage,
+  onEnsureExtensionsWorkspace,
   onLoadUnpackedExtension,
   onValidateUnpackedExtension,
   onSetExtensionEnabled,
@@ -449,7 +535,8 @@ export function SettingsPage({
         items: group.items.filter(
           (item) =>
             item.label.toLowerCase().includes(normalizedQuery) ||
-            item.detail.toLowerCase().includes(normalizedQuery),
+            item.detail.toLowerCase().includes(normalizedQuery) ||
+            settingsSearchIndex[item.id].includes(normalizedQuery),
         ),
       }))
       .filter((group) => group.items.length > 0);
@@ -486,7 +573,7 @@ export function SettingsPage({
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold">UltraX Settings</h1>
             <p className="truncate text-xs text-muted-foreground">
-              v1.0.9 premium desktop controls for browsing, privacy, updates, extensions, and release diagnostics.
+              v1.1.2 privacy, security, accessibility, permissions, and tab preview controls.
             </p>
           </div>
         </div>
@@ -606,6 +693,7 @@ export function SettingsPage({
               onDownloadUpdate={onDownloadUpdate}
               onInstallUpdate={onInstallUpdate}
               onOpenReleasesPage={onOpenReleasesPage}
+              onEnsureExtensionsWorkspace={onEnsureExtensionsWorkspace}
               onLoadUnpackedExtension={onLoadUnpackedExtension}
               onValidateUnpackedExtension={onValidateUnpackedExtension}
               onSetExtensionEnabled={onSetExtensionEnabled}
@@ -661,6 +749,7 @@ function CategoryContent({
   onDownloadUpdate,
   onInstallUpdate,
   onOpenReleasesPage,
+  onEnsureExtensionsWorkspace,
   onLoadUnpackedExtension,
   onValidateUnpackedExtension,
   onSetExtensionEnabled,
@@ -680,10 +769,16 @@ function CategoryContent({
   ) => void;
 }) {
   const [performanceNotice, setPerformanceNotice] = useState<string | null>(null);
+  const [privacyNotice, setPrivacyNotice] = useState<string | null>(null);
+  const [securityNotice, setSecurityNotice] = useState<string | null>(null);
   const [extensionNotice, setExtensionNotice] = useState<string | null>(null);
   const [updateNotice, setUpdateNotice] = useState<string | null>(null);
   const [extensionTab, setExtensionTab] = useState<"installed" | "store" | "developer">("installed");
   const [selectedExtensionId, setSelectedExtensionId] = useState<string | null>(null);
+  const [permissionHost, setPermissionHost] = useState("");
+  const [permissionType, setPermissionType] = useState<SitePermissionKey>("notifications");
+  const [permissionExceptionPolicy, setPermissionExceptionPolicy] =
+    useState<PermissionPolicy>("block");
   const selectedExtension =
     installedExtensions.find((extension) => extension.id === selectedExtensionId) ?? null;
   const enabledExtensionCount = installedExtensions.filter(
@@ -704,11 +799,25 @@ function CategoryContent({
       ? "Active on New Tab"
       : "Reduced or paused by current settings";
 
+  useEffect(() => {
+    if (category !== "extensions") {
+      return;
+    }
+
+    void onEnsureExtensionsWorkspace().catch((error) =>
+      setExtensionNotice(
+        error instanceof Error
+          ? error.message
+          : "UltraX could not create the extensions folder.",
+      ),
+    );
+  }, [category, onEnsureExtensionsWorkspace]);
+
   const diagnosticsPayload = () => ({
     generatedAt: new Date().toISOString(),
     app: {
       name: runtimeInfo?.appName ?? "UltraX",
-      version: runtimeInfo?.appVersion ?? "1.0.9",
+      version: runtimeInfo?.appVersion ?? "1.1.2",
       electron: runtimeInfo?.electronVersion ?? "Unknown",
       chromium: runtimeInfo?.chromiumVersion ?? "Unknown",
       node: runtimeInfo?.nodeVersion ?? "Unknown",
@@ -847,6 +956,17 @@ function CategoryContent({
       return;
     }
 
+    if (!settings.reviewExtensionPermissions) {
+      void onSetExtensionEnabled(extension.id, true)
+        .then(() => setExtensionNotice(`${extension.manifest.name} enabled.`))
+        .catch((error) =>
+          setExtensionNotice(
+            error instanceof Error ? error.message : "Extension state could not be changed.",
+          ),
+        );
+      return;
+    }
+
     requestConfirm(
       `Enable ${extension.manifest.name}?`,
       `Requested permissions: ${formatPermissionList(extension.manifest.permissions)}.`,
@@ -864,23 +984,30 @@ function CategoryContent({
   };
 
   const installStoreExtension = (item: ExtensionStoreItem) => {
+    const install = () => {
+      void onInstallStoreExtension(item.id)
+        .then((extension) => {
+          setSelectedExtensionId(extension.id);
+          setExtensionTab("installed");
+          setExtensionNotice(`${extension.manifest.name} installed from the local Store.`);
+        })
+        .catch((error) =>
+          setExtensionNotice(
+            error instanceof Error ? error.message : "Extension could not be installed.",
+          ),
+        );
+    };
+
+    if (!settings.reviewExtensionPermissions) {
+      install();
+      return;
+    }
+
     requestConfirm(
       `Install ${item.name}?`,
       `Requested permissions: ${formatPermissionList(item.permissions)}.`,
       "Install",
-      () => {
-        void onInstallStoreExtension(item.id)
-          .then((extension) => {
-            setSelectedExtensionId(extension.id);
-            setExtensionTab("installed");
-            setExtensionNotice(`${extension.manifest.name} installed from the local Store.`);
-          })
-          .catch((error) =>
-            setExtensionNotice(
-              error instanceof Error ? error.message : "Extension could not be installed.",
-            ),
-          );
-      },
+      install,
     );
   };
 
@@ -896,21 +1023,71 @@ function CategoryContent({
       );
   };
 
+  const exportSettings = () => {
+    const blob = new Blob(
+      [
+        JSON.stringify(
+          {
+            exportedAt: new Date().toISOString(),
+            appVersion: runtimeInfo?.appVersion ?? "1.1.2",
+            settings,
+          },
+          null,
+          2,
+        ),
+      ],
+      { type: "application/json" },
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "ultrax-settings.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setPrivacyNotice("Settings export created without cookies, passwords, or site data.");
+  };
+
+  const addPermissionException = () => {
+    const host = normalizeSiteHost(permissionHost);
+    if (!host) {
+      setSecurityNotice("Enter a valid site such as example.com.");
+      return;
+    }
+
+    const nextExceptions = [
+      {
+        id: `${host}-${permissionType}`,
+        host,
+        permission: permissionType,
+        policy: permissionExceptionPolicy,
+        updatedAt: Date.now(),
+      },
+      ...settings.sitePermissionExceptions.filter(
+        (item) => !(item.host === host && item.permission === permissionType),
+      ),
+    ].slice(0, 80);
+
+    onUpdateSettings({ sitePermissionExceptions: nextExceptions });
+    setPermissionHost("");
+    setSecurityNotice(`${host} exception saved.`);
+  };
+
+  const removePermissionException = (exceptionId: string) => {
+    onUpdateSettings({
+      sitePermissionExceptions: settings.sitePermissionExceptions.filter(
+        (item) => item.id !== exceptionId,
+      ),
+    });
+  };
+
   switch (category) {
     case "general":
       return (
         <>
-          <SettingSection title="General" detail="High-level defaults for how UltraX opens and behaves.">
-            <SegmentedRow
-              label="Theme"
-              detail="Choose a calm shell appearance."
-              value={settings.theme}
-              onChange={(value) => onUpdateSettings({ theme: value as ThemeMode })}
-              options={[
-                ["dark", "Dark"],
-                ["light", "Light"],
-                ["system", "System"],
-              ]}
+          <SettingSection title="Browser Behavior" detail="High-level defaults for how UltraX opens and closes.">
+            <InfoRow
+              label="Default browser"
+              detail="Windows default-browser registration is not wired yet; UltraX keeps the status visible."
             />
             <SegmentedRow
               label="When UltraX starts"
@@ -927,6 +1104,20 @@ function CategoryContent({
                 ["new-tab", "New Tab"],
                 ["specific-pages", "Pages"],
               ]}
+            />
+            <TextAreaRow
+              label="Specific startup pages"
+              detail="One http/https URL per line. Used when Startup is set to Pages."
+              value={settings.startupPages.join("\n")}
+              onChange={(value) =>
+                onUpdateSettings({
+                  startupPages: value
+                    .split(/\r?\n/)
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .slice(0, 12),
+                })
+              }
             />
             <SelectRow
               label="When closing UltraX"
@@ -945,17 +1136,64 @@ function CategoryContent({
                 ["close-and-discard-session", "Close and discard session"],
               ]}
             />
+          </SettingSection>
+
+          <SettingSection title="Downloads" detail="Common file behavior without leaving General.">
+            <SwitchRow
+              label="Ask where to save each file"
+              detail="Shows Electron's save dialog before saving downloads."
+              checked={settings.askWhereToSaveDownloads}
+              onChange={(checked) => onUpdateSettings({ askWhereToSaveDownloads: checked })}
+            />
+            <InfoRow
+              label="Default download location"
+              detail={settings.downloadPath || "System Downloads folder"}
+            />
+            <InlineActions>
+              <Button type="button" variant="outline" size="sm" onClick={onChooseDownloadFolder}>
+                Choose Folder
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={onOpenDownloadsFolder}>
+                Open Folder
+              </Button>
+            </InlineActions>
+          </SettingSection>
+
+          <SettingSection title="Language & System" detail="Settings that are safe in the current architecture.">
+            <InfoRow label="App language" detail="System language. Full i18n is planned before exposing a switch." />
+            <InfoRow label="Time/date format" detail="System default." />
+            <InfoRow label="Launch on startup" detail="Not enabled. OS startup registration is not wired yet." />
+            <InfoRow label="Continue running in background" detail="Off until tray/background mode ships." />
+            <InfoRow label="Notifications" detail="Website notifications follow Permissions settings." />
+          </SettingSection>
+
+          <SettingSection title="Maintenance" detail="Portable settings actions that exclude private site data.">
             <ActionRow
-              label="Open shell developer tools"
-              detail="Inspect UltraX chrome and diagnostics."
-              actionLabel="Open"
-              icon={<Code2 aria-hidden="true" />}
-              onAction={onOpenShellDevTools}
+              label="Export settings"
+              detail="Exports preferences only; no cookies, passwords, history, or cache."
+              actionLabel="Export"
+              icon={<Download aria-hidden="true" />}
+              onAction={exportSettings}
+            />
+            <ActionRow
+              label="Reset UltraX settings"
+              detail="Restore preferences to the v1.1.2 defaults."
+              actionLabel="Reset"
+              icon={<RotateCcw aria-hidden="true" />}
+              danger
+              onAction={() =>
+                requestConfirm(
+                  "Reset all UltraX settings?",
+                  "This restores preferences to the v1.1.2 defaults.",
+                  "Reset",
+                  onResetSettings,
+                )
+              }
             />
           </SettingSection>
           <StatusCard
             title="Release status"
-            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.9"} is running in ${
+            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.2"} is running in ${
               runtimeInfo?.buildType ?? "development"
             } mode.`}
             icon={<Sparkles aria-hidden="true" />}
@@ -1228,7 +1466,12 @@ function CategoryContent({
           <InfoRow label="Pinned tabs" detail="Pin and unpin tabs from the tab context menu." />
           <InfoRow label="Tab reordering" detail="Drag tabs within their pinned or normal group." />
           <InfoRow label="Tab context menu" detail="Right-click a tab for duplicate, close, pin, and session actions." />
-          <ComingSoonRow label="Tab hover preview" detail="Preview cards need compositor-aware capture." />
+          <SwitchRow
+            label="Tab hover preview"
+            detail="Show a compact metadata card after hovering a tab."
+            checked={settings.tabHoverPreview}
+            onChange={(checked) => onUpdateSettings({ tabHoverPreview: checked })}
+          />
         </SettingSection>
       );
 
@@ -1331,8 +1574,8 @@ function CategoryContent({
             value={settings.searchEngine}
             onChange={(value) => onUpdateSettings({ searchEngine: value as SearchEngine })}
             options={[
-              ["duckduckgo", "DuckDuckGo"],
               ["google", "Google"],
+              ["duckduckgo", "DuckDuckGo"],
               ["bing", "Bing"],
               ["brave", "Brave Search"],
               ["custom", "Custom"],
@@ -1340,7 +1583,7 @@ function CategoryContent({
           />
           <TextRow
             label="Custom search template"
-            detail="Use {query}, for example https://example.com/search?q={query}"
+            detail="Optional. Leave empty unless Default search engine is Custom."
             value={settings.customSearchUrl}
             onChange={(customSearchUrl) => onUpdateSettings({ customSearchUrl })}
           />
@@ -1417,7 +1660,7 @@ function CategoryContent({
           />
           <SelectRow
             label="Suggestion provider"
-            detail="Current search engine only uses online suggestions for Google or DuckDuckGo."
+            detail="Provider for optional online suggestions."
             value={settings.searchSuggestionSettings.suggestionProvider}
             onChange={(value) =>
               onUpdateSettings({
@@ -1429,9 +1672,9 @@ function CategoryContent({
               })
             }
             options={[
-              ["current-search-engine", "Current search engine"],
-              ["duckduckgo", "DuckDuckGo"],
               ["google", "Google"],
+              ["duckduckgo", "DuckDuckGo"],
+              ["current-search-engine", "Current search engine"],
               ["none", "None"],
             ]}
           />
@@ -1492,93 +1735,343 @@ function CategoryContent({
 
     case "privacy":
       return (
-        <SettingSection title="Privacy" detail="Local browser data controls for this MVP.">
-          <ActionRow
-            label="Clear browsing history"
-            detail="Remove the local history list."
-            actionLabel="Clear"
-            icon={<Trash2 aria-hidden="true" />}
-            danger
-            onAction={() =>
-              requestConfirm(
-                "Clear browsing history?",
-                "Visited pages will be removed from UltraX history.",
-                "Clear",
-                onClearHistory,
-              )
-            }
-          />
-          <ActionRow
-            label="Clear cache, cookies, and site data"
-            detail="Clears cache, cookies, local storage, IndexedDB, and cache storage."
-            actionLabel="Clear Data"
-            icon={<Trash2 aria-hidden="true" />}
-            danger
-            onAction={() =>
-              requestConfirm(
-                "Clear browser data?",
-                "This clears local site data from the UltraX web session.",
-                "Clear Data",
-                onClearBrowserData,
-              )
-            }
-          />
-          <SwitchRow
-            label="Do Not Track"
-            detail="Adds the DNT request header to web requests."
-            checked={settings.doNotTrack}
-            onChange={(checked) => onUpdateSettings({ doNotTrack: checked })}
-          />
-          <InfoRow
-            label="Online search suggestions"
-            detail="Disabled by default. When Do Not Track is on, UltraX does not request online suggestions."
-          />
-          <SelectRow
-            label="History retention"
-            detail="UltraX prunes entries outside the selected window."
-            value={settings.historyRetention}
-            onChange={(value) => onUpdateSettings({ historyRetention: value as HistoryRetention })}
-            options={[
-              ["forever", "Forever"],
-              ["30-days", "30 days"],
-              ["7-days", "7 days"],
-            ]}
-          />
-        </SettingSection>
+        <>
+          <SettingSection title="Browsing Data" detail="Clear local data without exposing private content.">
+            <SelectRow
+              label="Time range"
+              detail="History/downloads use this preference; Chromium site data clears all time in this version."
+              value={settings.privacyClearTimeRange}
+              onChange={(value) =>
+                onUpdateSettings({
+                  privacyClearTimeRange:
+                    value as BrowserSettings["privacyClearTimeRange"],
+                })
+              }
+              options={[
+                ["last-hour", "Last hour"],
+                ["last-24-hours", "Last 24 hours"],
+                ["last-7-days", "Last 7 days"],
+                ["all-time", "All time"],
+              ]}
+            />
+            <ActionRow
+              label="Clear browsing history"
+              detail="Remove local history entries from UltraX."
+              actionLabel="Clear"
+              icon={<Trash2 aria-hidden="true" />}
+              danger
+              onAction={() =>
+                requestConfirm(
+                  "Clear browsing history?",
+                  "Visited pages will be removed from UltraX history.",
+                  "Clear",
+                  onClearHistory,
+                )
+              }
+            />
+            <ActionRow
+              label="Clear cache, cookies, and site data"
+              detail="Clears cache, cookies, local storage, IndexedDB, and cache storage."
+              actionLabel="Clear Data"
+              icon={<Trash2 aria-hidden="true" />}
+              danger
+              onAction={() =>
+                requestConfirm(
+                  "Clear browser data?",
+                  "This clears local site data from the UltraX web session.",
+                  "Clear Data",
+                  onClearBrowserData,
+                )
+              }
+            />
+            <ActionRow
+              label="Clear downloads list"
+              detail="Downloaded files stay on disk."
+              actionLabel="Clear"
+              icon={<Trash2 aria-hidden="true" />}
+              danger
+              onAction={() =>
+                requestConfirm(
+                  "Clear downloads list?",
+                  "UltraX removes download records only. Files remain on disk.",
+                  "Clear",
+                  onClearDownloads,
+                )
+              }
+            />
+          </SettingSection>
+
+          <SettingSection title="Tracking & Requests" detail="Request-level privacy preferences.">
+            <SwitchRow
+              label="Send Do Not Track request"
+              detail="Adds the DNT request header to web requests."
+              checked={settings.doNotTrack}
+              onChange={(checked) => onUpdateSettings({ doNotTrack: checked })}
+            />
+            <SwitchRow
+              label="Block third-party cookies"
+              detail="Preference is saved; Chromium cookie policy wiring is planned next."
+              checked={settings.blockThirdPartyCookies}
+              onChange={(checked) => onUpdateSettings({ blockThirdPartyCookies: checked })}
+            />
+            <InfoRow
+              label="Search privacy"
+              detail={
+                settings.searchSuggestionSettings.onlineSuggestions
+                  ? "Online suggestions are enabled and send typed text to the selected provider."
+                  : "Online suggestions are off; local suggestions stay on-device."
+              }
+            />
+          </SettingSection>
+
+          <SettingSection title="Privacy on Close" detail="Automatically clear selected local data when UltraX closes.">
+            <SwitchRow
+              label="Clear history on close"
+              detail="Deletes local browsing history before the window session is saved."
+              checked={settings.clearHistoryOnClose}
+              onChange={(checked) => onUpdateSettings({ clearHistoryOnClose: checked })}
+            />
+            <SwitchRow
+              label="Clear cache on close"
+              detail="Requests Chromium cache clearing during shutdown."
+              checked={settings.clearCacheOnClose}
+              onChange={(checked) => onUpdateSettings({ clearCacheOnClose: checked })}
+            />
+            <SwitchRow
+              label="Clear downloads list on close"
+              detail="Clears download metadata; files on disk are not removed."
+              checked={settings.clearDownloadsOnClose}
+              onChange={(checked) => onUpdateSettings({ clearDownloadsOnClose: checked })}
+            />
+          </SettingSection>
+
+          <SettingSection title="What UltraX stores locally" detail="Transparent local data inventory.">
+            <InfoRow label="History" detail="Local visited-page metadata in UltraX user data." />
+            <InfoRow label="Bookmarks" detail="Local saved pages in UltraX user data." />
+            <InfoRow label="Settings" detail="Local preferences in the UltraX state file." />
+            <InfoRow label="Extension data" detail="Extension-local storage under the UltraX extensions workspace." />
+            <InfoRow label="Cache and site data" detail="Chromium session cache, cookies, local storage, IndexedDB, and cache storage." />
+            <InfoRow label="Downloads metadata" detail="Local download list; downloaded files are separate." />
+            <ActionRow
+              label="Export settings"
+              detail="Exports preferences only; no history, cookies, passwords, tokens, or cache."
+              actionLabel="Export"
+              icon={<Download aria-hidden="true" />}
+              onAction={exportSettings}
+            />
+          </SettingSection>
+
+          {privacyNotice && (
+            <StatusCard title="Privacy status" detail={privacyNotice} icon={<Shield aria-hidden="true" />} />
+          )}
+        </>
       );
 
     case "security":
       return (
         <>
-          <SettingSection title="Security" detail="Current hard boundaries for remote pages.">
-            <InfoRow label="Renderer isolation" detail="nodeIntegration=false, contextIsolation=true, sandbox=true, webSecurity=true." />
-            <InfoRow label="Permission requests" detail="Camera, microphone, location, notifications, and clipboard are denied until a per-site model exists." />
-            <InfoRow label="Protocol handling" detail="Unsupported schemes are blocked before navigation reaches WebContentsView." />
-            <ComingSoonRow label="Block third-party cookies" detail="Planned after deeper Electron session policy is added." />
+          <SettingSection title="Safe Browsing & HTTPS" detail="Meaningful protections without claiming a provider that is not active.">
+            <InfoRow
+              label="Safe Browsing"
+              detail="No external Safe Browsing provider is connected yet; UltraX does not claim provider-backed URL reputation."
+            />
+            <SwitchRow
+              label="Always use secure connections"
+              detail="Address entries like example.com open as https://example.com by default."
+              checked={settings.alwaysUseSecureConnections}
+              onChange={(checked) => onUpdateSettings({ alwaysUseSecureConnections: checked })}
+            />
+            <InfoRow
+              label="Block insecure content"
+              detail="Enabled through Chromium webSecurity. UltraX does not expose an unsafe off switch."
+            />
           </SettingSection>
-          <StatusCard
-            title="Security posture"
-            detail="UltraX uses a narrow preload API. Remote web content cannot access app internals."
-            icon={<Shield aria-hidden="true" />}
-          />
+
+          <SettingSection title="Dangerous Downloads" detail="Warn before saving files that can execute code.">
+            <SwitchRow
+              label="Warn before dangerous downloads"
+              detail="Requires confirmation for .exe, .msi, .bat, .cmd, .ps1, .scr, .vbs, .js, and .jar files."
+              checked={settings.warnDangerousDownloads}
+              onChange={(checked) => onUpdateSettings({ warnDangerousDownloads: checked })}
+            />
+          </SettingSection>
+
+          <SettingSection title="Extension Security" detail="Keep extension trust explicit while the Store matures.">
+            <SwitchRow
+              label="Review extension permissions before enabling"
+              detail="UltraX shows requested permissions before enabling or installing add-ons."
+              checked={settings.reviewExtensionPermissions}
+              onChange={(checked) => onUpdateSettings({ reviewExtensionPermissions: checked })}
+            />
+            <SwitchRow
+              label="Block unsigned remote extensions"
+              detail="Remote Store entries remain blocked until a signature model exists."
+              checked={settings.blockUnsignedRemoteExtensions}
+              onChange={(checked) => onUpdateSettings({ blockUnsignedRemoteExtensions: checked })}
+            />
+            <InfoRow label="Developer Mode" detail="Local unpacked extensions stay allowed only when Developer Mode is enabled." />
+          </SettingSection>
+
+          <SettingSection title="Website Isolation" detail="Read-only security architecture status.">
+            <InfoRow label="Context isolation" detail="Enabled for UltraX shell and web tabs." />
+            <InfoRow label="Node integration" detail="Disabled for remote pages." />
+            <InfoRow label="Sandbox" detail="Enabled for BrowserWindow and WebContentsView renderers." />
+            <InfoRow label="Web security" detail="Enabled. UltraX does not expose a disable switch." />
+            <InfoRow label="Extension sandbox" detail="Extension panels use sandboxed iframe hosts and typed APIs." />
+          </SettingSection>
+
+          <SettingSection title="Security Actions" detail="Reset or inspect release trust information.">
+            <ActionRow
+              label="Clear security warnings"
+              detail="No persistent security warnings are stored yet; this clears the visible status message."
+              actionLabel="Clear"
+              icon={<RotateCcw aria-hidden="true" />}
+              onAction={() => setSecurityNotice("No persistent security warnings are stored.")}
+            />
+            <ActionRow
+              label="Reset security settings"
+              detail="Restores only security preferences to the v1.1.2 defaults."
+              actionLabel="Reset"
+              icon={<RotateCcw aria-hidden="true" />}
+              danger
+              onAction={() =>
+                requestConfirm(
+                  "Reset security settings?",
+                  "Only Security page preferences will return to the v1.1.2 defaults.",
+                  "Reset",
+                  () => onUpdateSettings(defaultSecuritySettings),
+                )
+              }
+            />
+            <ActionRow
+              label="Open release trust information"
+              detail="Open GitHub Releases to review published installers and release notes."
+              actionLabel="Open"
+              icon={<Globe2 aria-hidden="true" />}
+              onAction={() => {
+                void onOpenReleasesPage();
+              }}
+            />
+          </SettingSection>
+
+          {securityNotice && (
+            <StatusCard title="Security status" detail={securityNotice} icon={<Shield aria-hidden="true" />} />
+          )}
         </>
       );
 
     case "permissions":
       return (
-        <SettingSection title="Permissions" detail="Strict defaults until site-level controls are implemented.">
-          {[
-            ["Camera", "Blocked by default."],
-            ["Microphone", "Blocked by default."],
-            ["Location", "Blocked by default."],
-            ["Notifications", "Blocked by default."],
-            ["Popups and redirects", "New windows are opened as UltraX tabs when safe."],
-            ["Downloads", "Allowed, tracked, and controlled by Downloads settings."],
-            ["Clipboard", "Blocked by default."],
-          ].map(([label, detail]) => (
-            <ComingSoonRow key={label} label={label} detail={detail} />
-          ))}
-        </SettingSection>
+        <>
+          <SettingSection title="Default Permission Behavior" detail="Choose what websites can do before a site-specific exception exists.">
+            {permissionRows.map(([permission, label, detail]) => (
+              <SelectRow
+                key={permission}
+                label={label}
+                detail={detail}
+                value={settings.permissionPolicy[permission]}
+                onChange={(value) =>
+                  onUpdateSettings({
+                    permissionPolicy: {
+                      ...settings.permissionPolicy,
+                      [permission]: value as PermissionPolicy,
+                    },
+                  })
+                }
+                options={[
+                  ["ask", "Ask before allowing"],
+                  ["allow", "Allow"],
+                  ["block", "Block"],
+                ]}
+              />
+            ))}
+          </SettingSection>
+
+          <SettingSection title="Site Exceptions" detail="Per-site permission decisions override the defaults above.">
+            <TextRow
+              label="Site"
+              detail="Use a hostname such as example.com."
+              value={permissionHost}
+              onChange={setPermissionHost}
+            />
+            <SelectRow
+              label="Permission"
+              detail="The permission this exception controls."
+              value={permissionType}
+              onChange={(value) => setPermissionType(value as SitePermissionKey)}
+              options={permissionRows.map(([permission, label]) => [permission, label] as [string, string])}
+            />
+            <SelectRow
+              label="Behavior"
+              detail="Saved behavior for this site and permission."
+              value={permissionExceptionPolicy}
+              onChange={(value) => setPermissionExceptionPolicy(value as PermissionPolicy)}
+              options={[
+                ["ask", "Ask before allowing"],
+                ["allow", "Allow"],
+                ["block", "Block"],
+              ]}
+            />
+            <ActionRow
+              label="Add site exception"
+              detail="Adds or replaces the matching site permission exception."
+              actionLabel="Add"
+              icon={<Check aria-hidden="true" />}
+              onAction={addPermissionException}
+            />
+            {settings.sitePermissionExceptions.length === 0 ? (
+              <InfoRow label="Saved exceptions" detail="No site-specific permissions saved yet." />
+            ) : (
+              settings.sitePermissionExceptions.map((exception) => (
+                <div key={exception.id} className="settings-row">
+                  <RowText
+                    label={`${exception.host} - ${permissionLabels[exception.permission]}`}
+                    detail={permissionPolicyLabels[exception.policy]}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removePermissionException(exception.id)}
+                    className="rounded-xl"
+                  >
+                    <X aria-hidden="true" />
+                    Remove
+                  </Button>
+                </div>
+              ))
+            )}
+            {settings.sitePermissionExceptions.length > 0 && (
+              <ActionRow
+                label="Clear all site permissions"
+                detail="Removes every site-specific permission exception."
+                actionLabel="Clear"
+                icon={<Trash2 aria-hidden="true" />}
+                danger
+                onAction={() =>
+                  requestConfirm(
+                    "Clear all site permissions?",
+                    "Default permission behavior remains unchanged.",
+                    "Clear",
+                    () => onUpdateSettings({ sitePermissionExceptions: [] }),
+                  )
+                }
+              />
+            )}
+          </SettingSection>
+
+          <SettingSection title="Runtime Coverage" detail="What is enforced in v1.1.2 and what stays under Chromium defaults.">
+            <InfoRow label="Electron permission prompts" detail="Camera, microphone, location, notifications, and clipboard use UltraX Allow/Block prompts with optional remembering." />
+            <InfoRow label="Downloads" detail="Download permission defaults are enforced before the file is saved." />
+            <InfoRow label="Pop-ups" detail="Unsafe windows are denied. Safe window-open requests become UltraX tabs." />
+            <InfoRow label="MIDI and file system access" detail="Not exposed until a device/file permission model exists." />
+            <InfoRow label="JavaScript and images" detail="Use Chromium defaults; UltraX does not expose unsafe content-disabling toggles yet." />
+          </SettingSection>
+
+          {securityNotice && (
+            <StatusCard title="Permission status" detail={securityNotice} icon={<Blocks aria-hidden="true" />} />
+          )}
+        </>
       );
 
     case "bookmarks":
@@ -1665,7 +2158,7 @@ function CategoryContent({
             <ComingSoonRow label="Add profile" detail="Separate profile storage is planned for v1.1." />
             <ComingSoonRow label="Guest mode" detail="Requires a separate temporary session partition." />
           </SettingSection>
-          <EmptyFeature title="Profiles are coming next" detail="v1.0.9 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
+          <EmptyFeature title="Profiles are coming next" detail="v1.1.2 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
         </>
       );
 
@@ -1691,7 +2184,7 @@ function CategoryContent({
             <InfoRow label="What extensions are" detail="Browser-level add-ons with scoped permissions for tabs, sidebar, and local browser features." />
             <ComingSoonRow label="Plugin marketplace" detail="Requires signed native module loading and a separate trust boundary." />
           </SettingSection>
-          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.0.9 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
+          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.1.2 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
         </>
       );
 
@@ -2291,7 +2784,7 @@ function CategoryContent({
           )}
 
           <SettingSection title="Diagnostics" detail="Local performance information safe to copy or export.">
-            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.9"}`} />
+            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.2"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2329,14 +2822,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset performance settings"
-              detail="Restores only this Performance page to v1.0.9 defaults."
+              detail="Restores only this Performance page to v1.1.2 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset performance settings?",
-                  "Only the Performance page settings will return to the v1.0.9 defaults.",
+                  "Only the Performance page settings will return to the v1.1.2 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultPerformanceSettings),
                 )
@@ -2356,41 +2849,125 @@ function CategoryContent({
 
     case "accessibility":
       return (
-        <SettingSection title="Accessibility" detail="Readable, keyboard-friendly controls for the shell.">
-          <SwitchRow
-            label="Reduce motion"
-            detail="Pauses motion-heavy shell effects."
-            checked={settings.reducedMotion}
-            onChange={(checked) => onUpdateSettings({ reducedMotion: checked })}
-          />
-          <SwitchRow
-            label="Increase contrast"
-            detail="Strengthens borders and muted text."
-            checked={settings.increaseContrast}
-            onChange={(checked) => onUpdateSettings({ increaseContrast: checked })}
-          />
-          <SegmentedRow
-            label="Text size"
-            detail="Adjusts UltraX shell text."
-            value={settings.textScale}
-            onChange={(value) =>
-              onUpdateSettings({ textScale: value as BrowserSettings["textScale"] })
-            }
-            options={[
-              ["normal", "Normal"],
-              ["large", "Large"],
-            ]}
-          />
-          <RangeRow
-            label="Default page zoom"
-            detail={`${Math.round(settings.pageZoom * 100)}% for web pages.`}
-            min={0.8}
-            max={1.25}
-            step={0.05}
-            value={settings.pageZoom}
-            onChange={(pageZoom) => onUpdateSettings({ pageZoom })}
-          />
-        </SettingSection>
+        <>
+          <SettingSection title="Motion" detail="Control animation energy across UltraX.">
+            <SwitchRow
+              label="Reduced Motion"
+              detail="Reduce animations and motion effects across UltraX."
+              checked={settings.reducedMotion}
+              onChange={(checked) => onUpdateSettings({ reducedMotion: checked })}
+            />
+            <SegmentedRow
+              label="Animation Level"
+              detail="Reduced Motion overrides Expressive animations."
+              value={settings.animationLevel}
+              onChange={(value) => onUpdateSettings({ animationLevel: value as AnimationLevel })}
+              options={[
+                ["minimal", "Minimal"],
+                ["balanced", "Balanced"],
+                ["expressive", "Expressive"],
+              ]}
+            />
+          </SettingSection>
+
+          <SettingSection title="Visual Comfort" detail="Improve readability without changing the UltraX identity.">
+            <SwitchRow
+              label="Increase Contrast"
+              detail="Improve contrast for text, borders, controls, and important UI."
+              checked={settings.increaseContrast}
+              onChange={(checked) => onUpdateSettings({ increaseContrast: checked })}
+            />
+            <SwitchRow
+              label="Reduce Transparency"
+              detail="Reduce blur and glass effects for readability."
+              checked={settings.reduceTransparency}
+              onChange={(checked) => onUpdateSettings({ reduceTransparency: checked })}
+            />
+            <SegmentedRow
+              label="Focus Ring Visibility"
+              detail="Tune focus indicators for keyboard and assistive workflows."
+              value={settings.focusRingVisibility}
+              onChange={(value) =>
+                onUpdateSettings({
+                  focusRingVisibility: value as BrowserSettings["focusRingVisibility"],
+                })
+              }
+              options={[
+                ["subtle", "Subtle"],
+                ["standard", "Standard"],
+                ["high", "High Visibility"],
+              ]}
+            />
+            <SegmentedRow
+              label="Text Size"
+              detail="Adjusts UltraX shell text. Page zoom below affects web content."
+              value={settings.textScale}
+              onChange={(value) =>
+                onUpdateSettings({ textScale: value as BrowserSettings["textScale"] })
+              }
+              options={[
+                ["small", "Small"],
+                ["default", "Default"],
+                ["large", "Large"],
+                ["extra-large", "Extra Large"],
+              ]}
+            />
+            <InfoRow label="UI Scale" detail="Planned after responsive layout testing; Text Size is safe in v1.1.2." />
+            <RangeRow
+              label="Default page zoom"
+              detail={`${Math.round(settings.pageZoom * 100)}% for web pages.`}
+              min={0.8}
+              max={1.25}
+              step={0.05}
+              value={settings.pageZoom}
+              onChange={(pageZoom) => onUpdateSettings({ pageZoom })}
+            />
+          </SettingSection>
+
+          <SettingSection title="Keyboard Navigation" detail="Keep controls reachable and visibly focused.">
+            <SwitchRow
+              label="Always show focus indicators"
+              detail="Shows a visible focus outline on shell controls when focused."
+              checked={settings.alwaysShowFocusIndicators}
+              onChange={(checked) => onUpdateSettings({ alwaysShowFocusIndicators: checked })}
+            />
+            <InfoRow label="Enable single-key shortcuts" detail="Not enabled; UltraX only uses modifier shortcuts to avoid hijacking page typing." />
+            <SwitchRow
+              label="Tab through toolbar controls"
+              detail="Toolbar buttons and Settings controls remain standard keyboard targets."
+              checked={settings.tabThroughToolbarControls}
+              onChange={(checked) => onUpdateSettings({ tabThroughToolbarControls: checked })}
+            />
+          </SettingSection>
+
+          <SettingSection title="Reading Comfort" detail="Small UI changes that reduce visual strain.">
+            <SwitchRow
+              label="Underline links in UltraX UI"
+              detail="Underlines links in UltraX-owned surfaces for easier scanning."
+              checked={settings.underlineLinks}
+              onChange={(checked) => onUpdateSettings({ underlineLinks: checked })}
+            />
+            <SwitchRow
+              label="Use readable font smoothing"
+              detail="Applies antialiased shell text rendering."
+              checked={settings.readableFontSmoothing}
+              onChange={(checked) => onUpdateSettings({ readableFontSmoothing: checked })}
+            />
+            <SwitchRow
+              label="Reduce visual effects on New Tab"
+              detail="Keeps New Tab calmer even when global Reduced Motion is off."
+              checked={settings.reduceNewTabAnimations}
+              onChange={(checked) => onUpdateSettings({ reduceNewTabAnimations: checked })}
+            />
+          </SettingSection>
+
+          <SettingSection title="Screen Reader Support" detail="Actual metadata improvements in the shell.">
+            <InfoRow label="Toolbar buttons" detail="Navigation, panels, settings, and window controls use accessible names." />
+            <InfoRow label="Tabs" detail="Tab buttons expose close, pinned, muted, loading, and context-menu controls with keyboard access." />
+            <InfoRow label="Settings controls" detail="Switches, dropdowns, dialogs, and category navigation use semantic controls." />
+            <InfoRow label="Tab hover preview" detail="Metadata preview is aria-hidden and dismisses on Escape so screen readers are not spammed by hover." />
+          </SettingSection>
+        </>
       );
 
     case "shortcuts":
@@ -2432,7 +3009,7 @@ function CategoryContent({
             onAction={() =>
               requestConfirm(
                 "Reset all UltraX settings?",
-                "This restores preferences to the v1.0.9 defaults.",
+                "This restores preferences to the v1.1.2 defaults.",
                 "Reset",
                 onResetSettings,
               )
@@ -2445,7 +3022,7 @@ function CategoryContent({
     case "updates": {
       const update = updateStatus ?? {
         status: "idle",
-        currentVersion: runtimeInfo?.appVersion ?? "1.0.9",
+        currentVersion: runtimeInfo?.appVersion ?? "1.1.2",
         channel: settings.updates.channel,
         updateAvailable: false,
         lastCheckedAt: settings.updates.lastCheckedAt,
@@ -2610,7 +3187,7 @@ function CategoryContent({
       return (
         <>
           <SettingSection title="About UltraX" detail="Build and engine information.">
-            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.9"}`} />
+            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.2"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2625,8 +3202,8 @@ function CategoryContent({
             <InfoRow label="License" detail="Project-local MVP placeholder." />
           </SettingSection>
           <StatusCard
-            title="UltraX Browser v1.0.9"
-            detail="Search suggestions, release trust hygiene, GitHub Releases updates, native Extensions, and preserved Chromium browser security."
+            title="UltraX Browser v1.1.2"
+            detail="Expanded Settings, privacy, security, accessibility, permissions, Google defaults, and tab hover previews."
             icon={<Sparkles aria-hidden="true" />}
           />
         </>

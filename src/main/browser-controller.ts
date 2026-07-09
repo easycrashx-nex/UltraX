@@ -29,8 +29,10 @@ import type {
   ExtensionRuntimeLogLevel,
   ExtensionStoreItem,
   ExtensionValidationResult,
+  ExtensionsWorkspaceInfo,
   HistoryEntry,
   InstalledExtension,
+  TabReorderPlacement,
   UltraXExtensionPermission,
   ViewInsets,
 } from "../shared/types";
@@ -43,12 +45,24 @@ import {
 } from "./navigation";
 import { createExtensionPanelDescriptor } from "./extension-runtime";
 import { LocalExtensionStoreProvider } from "./extension-store";
+import { ensureExtensionsWorkspace as ensureExtensionsWorkspaceDirectory } from "./extension-workspace";
 import { pushExtensionError, readLocalExtension, validateExtensionManifest } from "./extensions";
 import { DEFAULT_SETTINGS, StorageService } from "./storage";
 
 const CHROME_HEIGHT = 108;
 const MAX_HISTORY_ENTRIES = 1000;
 const MAX_DOWNLOADS = 50;
+const DANGEROUS_DOWNLOAD_EXTENSIONS = new Set([
+  ".exe",
+  ".msi",
+  ".bat",
+  ".cmd",
+  ".ps1",
+  ".scr",
+  ".vbs",
+  ".js",
+  ".jar",
+]);
 
 type BrowserControllerOptions = {
   windowId?: string;
@@ -83,6 +97,11 @@ export class BrowserController {
   init(): void {
     this.configureDownloadHandling();
     this.configureRequestHeaders();
+    try {
+      ensureExtensionsWorkspaceDirectory();
+    } catch (error) {
+      console.warn(error instanceof Error ? error.message : "Extensions workspace setup failed.");
+    }
     this.applySettingsToViews();
     this.restoreTabs();
     this.window.on("resize", this.onWindowBoundsChanged);
@@ -207,7 +226,7 @@ export class BrowserController {
     this.persistAndEmit();
   }
 
-  reorderTab(tabId: string, targetTabId: string): void {
+  reorderTab(tabId: string, targetTabId: string, placement: TabReorderPlacement = "before"): void {
     if (tabId === targetTabId) {
       return;
     }
@@ -218,10 +237,19 @@ export class BrowserController {
       return;
     }
 
+    const sourceTab = this.state.tabs[fromIndex];
+    const targetTab = this.state.tabs[targetIndex];
+    if (Boolean(sourceTab.isPinned) !== Boolean(targetTab.isPinned)) {
+      return;
+    }
+
     const [tab] = this.state.tabs.splice(fromIndex, 1);
     const targetAfterRemoval = this.state.tabs.findIndex((item) => item.id === targetTabId);
     const pinnedCount = this.getPinnedTabCount();
-    let insertIndex = targetAfterRemoval === -1 ? this.state.tabs.length : targetAfterRemoval;
+    let insertIndex =
+      targetAfterRemoval === -1
+        ? this.state.tabs.length
+        : targetAfterRemoval + (placement === "after" ? 1 : 0);
 
     insertIndex = tab.isPinned
       ? Math.min(insertIndex, pinnedCount)
@@ -522,10 +550,11 @@ export class BrowserController {
       throw new Error("Enable Developer Mode before loading local UltraX extensions.");
     }
 
+    const workspace = ensureExtensionsWorkspaceDirectory();
     const result = await dialog.showOpenDialog(this.window, {
       title: "Load unpacked UltraX extension",
       properties: ["openDirectory"],
-      defaultPath: this.resolveExtensionsDirectory(),
+      defaultPath: workspace.unpacked,
     });
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -562,10 +591,11 @@ export class BrowserController {
       throw new Error("Enable Developer Mode before validating local UltraX extensions.");
     }
 
+    const workspace = ensureExtensionsWorkspaceDirectory();
     const result = await dialog.showOpenDialog(this.window, {
       title: "Validate UltraX extension folder",
       properties: ["openDirectory"],
-      defaultPath: this.resolveExtensionsDirectory(),
+      defaultPath: workspace.unpacked,
     });
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -607,6 +637,7 @@ export class BrowserController {
   }
 
   setExtensionEnabled(extensionId: string, enabled: boolean): void {
+    ensureExtensionsWorkspaceDirectory();
     const extension = this.getInstalledExtension(extensionId);
     if (!extension) {
       throw new Error("Extension not found.");
@@ -628,6 +659,7 @@ export class BrowserController {
   }
 
   removeExtension(extensionId: string): void {
+    ensureExtensionsWorkspaceDirectory();
     const extension = this.getInstalledExtension(extensionId);
     if (!extension) {
       throw new Error("Extension not found.");
@@ -645,6 +677,7 @@ export class BrowserController {
   }
 
   reloadExtensions(): void {
+    ensureExtensionsWorkspaceDirectory();
     this.state.installedExtensions = this.state.installedExtensions.map((extension) => {
       if (extension.source !== "local" || !extension.installPath) {
         return extension.enabled
@@ -671,16 +704,24 @@ export class BrowserController {
   }
 
   async openExtensionsFolder(): Promise<void> {
-    const directory = this.resolveExtensionsDirectory();
-    fs.mkdirSync(directory, { recursive: true });
-    await shell.openPath(directory);
+    const workspace = ensureExtensionsWorkspaceDirectory();
+    const error = await shell.openPath(workspace.root);
+    if (error) {
+      throw new Error("UltraX could not open the extensions folder. Please try again.");
+    }
+  }
+
+  ensureExtensionsWorkspace(): ExtensionsWorkspaceInfo {
+    return ensureExtensionsWorkspaceDirectory();
   }
 
   async listExtensionStore(): Promise<ExtensionStoreItem[]> {
+    ensureExtensionsWorkspaceDirectory();
     return this.extensionStore.listExtensions(this.state.installedExtensions);
   }
 
   async installStoreExtension(extensionId: string): Promise<InstalledExtension> {
+    ensureExtensionsWorkspaceDirectory();
     const extension = await this.extensionStore.installExtension(extensionId);
     const existingIndex = this.state.installedExtensions.findIndex(
       (item) => item.id === extension.id,
@@ -706,6 +747,7 @@ export class BrowserController {
   }
 
   openExtensionPanel(extensionId: string): ExtensionPanelDescriptor {
+    ensureExtensionsWorkspaceDirectory();
     const extension = this.requireRunnableExtension(extensionId);
     const descriptor = createExtensionPanelDescriptor(extension);
     this.appendExtensionLog(extension.id, "info", "Sidebar panel opened.");
@@ -718,6 +760,7 @@ export class BrowserController {
     request: ExtensionApiRequest,
   ): ExtensionApiResponse {
     try {
+      ensureExtensionsWorkspaceDirectory();
       const result = this.handleExtensionApi(extensionId, request.method, request.args);
       this.appendExtensionLog(extensionId, "info", `API ${request.method} completed.`);
       this.persistAndEmit();
@@ -743,6 +786,7 @@ export class BrowserController {
     level: ExtensionRuntimeLogLevel,
     message: string,
   ): void {
+    ensureExtensionsWorkspaceDirectory();
     this.appendExtensionLog(extensionId, level, message);
     if (level === "error") {
       this.markExtensionError(extensionId, message);
@@ -843,6 +887,18 @@ export class BrowserController {
   }
 
   prepareForWindowClose(discardSession: boolean): void {
+    if (this.state.settings.clearHistoryOnClose) {
+      this.state.history = [];
+    }
+
+    if (this.state.settings.clearDownloadsOnClose) {
+      this.state.downloads = [];
+    }
+
+    if (this.state.settings.clearCacheOnClose) {
+      void this.browserSession.clearCache();
+    }
+
     if (discardSession) {
       this.state.tabs = [];
       this.state.activeTabId = null;
@@ -1002,7 +1058,7 @@ export class BrowserController {
     view.webContents.setZoomFactor(this.state.settings.pageZoom);
 
     view.webContents.setWindowOpenHandler(({ url }) => {
-      if (isSafeWebUrl(url)) {
+      if (isSafeWebUrl(url) && this.confirmPopupPermission(url)) {
         this.createTab(url, true);
       }
       return { action: "deny" };
@@ -1418,10 +1474,6 @@ export class BrowserController {
     return this.state.settings.downloadPath || app.getPath("downloads");
   }
 
-  private resolveExtensionsDirectory(): string {
-    return path.join(app.getPath("userData"), "extensions");
-  }
-
   private getInstalledExtension(extensionId: string): InstalledExtension | undefined {
     return this.state.installedExtensions.find((extension) => extension.id === extensionId);
   }
@@ -1639,19 +1691,30 @@ export class BrowserController {
       return;
     }
 
+    const filename = item.getFilename() || path.basename(item.getURL()) || "download";
+    if (!this.confirmDownloadPermission(item.getURL(), filename)) {
+      item.cancel();
+      return;
+    }
+
+    if (!this.confirmDangerousDownload(filename)) {
+      item.cancel();
+      return;
+    }
+
     const downloadDirectory = this.resolveDownloadDirectory();
     if (this.state.settings.askWhereToSaveDownloads) {
       item.setSaveDialogOptions({
-        defaultPath: path.join(downloadDirectory, item.getFilename() || "download"),
+        defaultPath: path.join(downloadDirectory, filename),
       });
     } else {
-      item.setSavePath(path.join(downloadDirectory, item.getFilename() || "download"));
+      item.setSavePath(path.join(downloadDirectory, filename));
     }
 
     const download: DownloadItem = {
       id: randomUUID(),
       url: item.getURL(),
-      filename: item.getFilename() || path.basename(item.getURL()) || "download",
+      filename,
       savePath: item.getSavePath(),
       receivedBytes: item.getReceivedBytes(),
       totalBytes: item.getTotalBytes(),
@@ -1682,6 +1745,92 @@ export class BrowserController {
 
   private ownsWebContents(contents: WebContents): boolean {
     return [...this.views.values()].some((view) => view.webContents === contents);
+  }
+
+  private confirmDownloadPermission(url: string, filename: string): boolean {
+    const host = this.getHostFromUrl(url);
+    const policy = this.getSitePermissionPolicy(host, "downloads");
+    if (policy === "allow") {
+      return true;
+    }
+
+    if (policy === "block") {
+      return false;
+    }
+
+    const response = dialog.showMessageBoxSync(this.window, {
+      type: "question",
+      buttons: ["Allow", "Block"],
+      defaultId: 1,
+      cancelId: 1,
+      message: `Allow download from ${host || "this site"}?`,
+      detail: filename,
+    });
+
+    return response === 0;
+  }
+
+  private confirmDangerousDownload(filename: string): boolean {
+    if (!this.state.settings.warnDangerousDownloads) {
+      return true;
+    }
+
+    const extension = path.extname(filename).toLowerCase();
+    if (!DANGEROUS_DOWNLOAD_EXTENSIONS.has(extension)) {
+      return true;
+    }
+
+    const response = dialog.showMessageBoxSync(this.window, {
+      type: "warning",
+      buttons: ["Keep", "Cancel"],
+      defaultId: 1,
+      cancelId: 1,
+      message: "This download can run code on your computer.",
+      detail: `${filename} has a ${extension} extension. Only keep it if you trust the source.`,
+    });
+
+    return response === 0;
+  }
+
+  private confirmPopupPermission(url: string): boolean {
+    const host = this.getHostFromUrl(url);
+    const policy = this.getSitePermissionPolicy(host, "popups");
+    if (policy === "allow") {
+      return true;
+    }
+
+    if (policy === "block") {
+      return false;
+    }
+
+    const response = dialog.showMessageBoxSync(this.window, {
+      type: "question",
+      buttons: ["Allow", "Block"],
+      defaultId: 1,
+      cancelId: 1,
+      message: `Allow pop-up from ${host || "this site"}?`,
+      detail: url,
+    });
+
+    return response === 0;
+  }
+
+  private getSitePermissionPolicy(
+    host: string,
+    permission: BrowserSettings["sitePermissionExceptions"][number]["permission"],
+  ): BrowserSettings["sitePermissionExceptions"][number]["policy"] {
+    const exception = this.state.settings.sitePermissionExceptions.find(
+      (item) => item.host === host && item.permission === permission,
+    );
+    return exception?.policy ?? this.state.settings.permissionPolicy[permission] ?? "block";
+  }
+
+  private getHostFromUrl(url: string): string {
+    try {
+      return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+    } catch {
+      return "";
+    }
   }
 
   private persistAndEmit(): void {

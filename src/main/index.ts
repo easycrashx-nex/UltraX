@@ -1,10 +1,12 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   screen,
   session,
   type IpcMainInvokeEvent,
+  type MessageBoxOptions,
 } from "electron";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -18,10 +20,12 @@ import type {
   PermissionPolicy,
   RuntimeInfo,
   SitePermissionKey,
+  TabReorderPlacement,
   UpdateSettings,
   ViewInsets,
 } from "../shared/types";
 import { BrowserController } from "./browser-controller";
+import { ensureExtensionsWorkspace } from "./extension-workspace";
 import { WEB_PARTITION } from "./navigation";
 import { StorageService } from "./storage";
 import { UpdateManager } from "./updates/update-manager";
@@ -175,17 +179,179 @@ function getWindowIconPath(): string {
 function configureSecurity(): void {
   const browserSession = session.fromPartition(WEB_PARTITION);
 
-  browserSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(false);
+  browserSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const decision = resolveSitePermissionDecision(
+      permission,
+      webContents.getURL(),
+      details,
+    );
+    if (!decision) {
+      callback(false);
+      return;
+    }
+
+    if (decision.policy === "allow") {
+      callback(true);
+      return;
+    }
+
+    if (decision.policy === "block") {
+      callback(false);
+      return;
+    }
+
+    const ownerWindow =
+      BrowserWindow.fromWebContents(webContents) ?? BrowserWindow.getFocusedWindow();
+    const options: MessageBoxOptions = {
+      type: "question",
+      buttons: ["Allow", "Block"],
+      defaultId: 1,
+      cancelId: 1,
+      checkboxLabel: "Remember for this site",
+      message: `Allow ${decision.host} to use ${formatPermissionKeys(decision.keys)}?`,
+      detail:
+        "UltraX will only remember this choice for this site if you enable the checkbox.",
+    };
+    const prompt = ownerWindow
+      ? dialog.showMessageBox(ownerWindow, options)
+      : dialog.showMessageBox(options);
+
+    void prompt
+      .then((result) => {
+        const allowed = result.response === 0;
+        if (result.checkboxChecked) {
+          rememberPermissionDecision(
+            decision.host,
+            decision.keys,
+            allowed ? "allow" : "block",
+          );
+        }
+        callback(allowed);
+      })
+      .catch(() => callback(false));
   });
 
-  browserSession.setPermissionCheckHandler(() => false);
+  browserSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
+    const decision = resolveSitePermissionDecision(permission, requestingOrigin, details);
+    return decision?.policy === "allow";
+  });
 
   app.on("web-contents-created", (_event, contents) => {
     contents.on("will-attach-webview", (event) => {
       event.preventDefault();
     });
   });
+}
+
+function resolveSitePermissionDecision(
+  permission: string,
+  origin: string,
+  details?: unknown,
+): { host: string; keys: SitePermissionKey[]; policy: PermissionPolicy } | null {
+  const host = getPermissionHost(origin);
+  const keys = getSitePermissionKeys(permission, details);
+  if (!host || keys.length === 0) {
+    return null;
+  }
+
+  const settings = storage.load().settings;
+  const policies = keys.map((key) => resolvePermissionPolicyForHost(settings, host, key));
+  const policy = policies.includes("block")
+    ? "block"
+    : policies.every((item) => item === "allow")
+      ? "allow"
+      : "ask";
+
+  return { host, keys, policy };
+}
+
+function getSitePermissionKeys(permission: string, details?: unknown): SitePermissionKey[] {
+  if (permission === "media") {
+    const mediaTypes = (details as { mediaTypes?: unknown } | undefined)?.mediaTypes;
+    const types = Array.isArray(mediaTypes) ? mediaTypes : [];
+    const keys: SitePermissionKey[] = [];
+    if (types.includes("video")) {
+      keys.push("camera");
+    }
+    if (types.includes("audio")) {
+      keys.push("microphone");
+    }
+    return keys.length > 0 ? keys : ["camera", "microphone"];
+  }
+
+  const mapping: Record<string, SitePermissionKey | undefined> = {
+    geolocation: "location",
+    notifications: "notifications",
+    "clipboard-read": "clipboard",
+    "clipboard-write": "clipboard",
+    "clipboard-sanitized-write": "clipboard",
+  };
+
+  const key = mapping[permission];
+  return key ? [key] : [];
+}
+
+function resolvePermissionPolicyForHost(
+  settings: BrowserSettings,
+  host: string,
+  permission: SitePermissionKey,
+): PermissionPolicy {
+  const exception = settings.sitePermissionExceptions.find(
+    (item) => item.host === host && item.permission === permission,
+  );
+  return exception?.policy ?? settings.permissionPolicy[permission] ?? "block";
+}
+
+function getPermissionHost(origin: string): string {
+  try {
+    const parsed = new URL(origin);
+    return parsed.hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function rememberPermissionDecision(
+  host: string,
+  keys: SitePermissionKey[],
+  policy: PermissionPolicy,
+): void {
+  const state = storage.load();
+  const existing = state.settings.sitePermissionExceptions.filter(
+    (item) => !(item.host === host && keys.includes(item.permission)),
+  );
+  const now = Date.now();
+  state.settings.sitePermissionExceptions = [
+    ...keys.map((key) => ({
+      id: randomUUID(),
+      host,
+      permission: key,
+      policy,
+      updatedAt: now,
+    })),
+    ...existing,
+  ].slice(0, 80);
+  storage.save(state);
+
+  for (const record of windowRecords.values()) {
+    record.controller.syncSettings(state.settings);
+  }
+}
+
+function formatPermissionKeys(keys: SitePermissionKey[]): string {
+  const labels: Record<SitePermissionKey, string> = {
+    camera: "camera",
+    microphone: "microphone",
+    location: "location",
+    notifications: "notifications",
+    popups: "pop-ups",
+    downloads: "downloads",
+    clipboard: "clipboard",
+    autoplay: "autoplay",
+    javascript: "JavaScript",
+    images: "images",
+  };
+  return keys.map((key) => labels[key]).join(" and ");
 }
 
 function createInitialWindows(): void {
@@ -238,10 +404,11 @@ function registerIpcHandlers(): void {
       readBoolean(pinned, "pinned tab state"),
     ),
   );
-  handle(IPC.reorderTab, (record, _event, tabId, targetTabId) =>
+  handle(IPC.reorderTab, (record, _event, tabId, targetTabId, placement) =>
     record.controller.reorderTab(
       readString(tabId, "tabId", 128),
       readString(targetTabId, "target tabId", 128),
+      readTabReorderPlacement(placement),
     ),
   );
   handle(IPC.closeOtherTabs, (record, _event, tabId) =>
@@ -334,6 +501,7 @@ function registerIpcHandlers(): void {
     syncSettingsToOtherWindows(record);
   });
   handle(IPC.clearBookmarks, (record) => record.controller.clearBookmarks());
+  handle(IPC.ensureExtensionsWorkspace, (record) => record.controller.ensureExtensionsWorkspace());
   handle(IPC.loadUnpackedExtension, async (record) => record.controller.loadUnpackedExtension());
   handle(IPC.validateUnpackedExtension, async (record) => record.controller.validateUnpackedExtension());
   handle(IPC.setExtensionEnabled, (record, _event, extensionId, enabled) =>
@@ -441,6 +609,18 @@ function offsetBounds(bounds: BrowserWindowBounds): BrowserWindowBounds {
 function readString(value: unknown, fieldName: string, maxLength: number): string {
   if (typeof value !== "string" || value.length > maxLength) {
     throw new Error(`Invalid ${fieldName}.`);
+  }
+
+  return value;
+}
+
+function readTabReorderPlacement(value: unknown): TabReorderPlacement {
+  if (value === undefined) {
+    return "before";
+  }
+
+  if (value !== "before" && value !== "after") {
+    throw new Error("Invalid tab reorder placement.");
   }
 
   return value;
@@ -560,7 +740,7 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
         suggestions.onlineSuggestions,
         "online suggestion setting",
       ),
-      suggestionProvider: suggestions.suggestionProvider ?? "current-search-engine",
+      suggestionProvider: suggestions.suggestionProvider ?? "google",
     };
   }
 
@@ -799,6 +979,81 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
 
   if (candidate.permissionPolicy !== undefined) {
     patch.permissionPolicy = readPermissionPolicy(candidate.permissionPolicy);
+  }
+
+  if (candidate.sitePermissionExceptions !== undefined) {
+    patch.sitePermissionExceptions = readPermissionExceptions(candidate.sitePermissionExceptions);
+  }
+
+  if (candidate.safeBrowsing !== undefined) {
+    patch.safeBrowsing = readBoolean(candidate.safeBrowsing, "safe browsing setting");
+  }
+
+  if (candidate.alwaysUseSecureConnections !== undefined) {
+    patch.alwaysUseSecureConnections = readBoolean(
+      candidate.alwaysUseSecureConnections,
+      "secure connections setting",
+    );
+  }
+
+  if (candidate.blockInsecureContent !== undefined) {
+    patch.blockInsecureContent = readBoolean(
+      candidate.blockInsecureContent,
+      "insecure content setting",
+    );
+  }
+
+  if (candidate.warnDangerousDownloads !== undefined) {
+    patch.warnDangerousDownloads = readBoolean(
+      candidate.warnDangerousDownloads,
+      "dangerous downloads warning setting",
+    );
+  }
+
+  if (candidate.reviewExtensionPermissions !== undefined) {
+    patch.reviewExtensionPermissions = readBoolean(
+      candidate.reviewExtensionPermissions,
+      "extension permission review setting",
+    );
+  }
+
+  if (candidate.blockUnsignedRemoteExtensions !== undefined) {
+    patch.blockUnsignedRemoteExtensions = readBoolean(
+      candidate.blockUnsignedRemoteExtensions,
+      "unsigned remote extensions setting",
+    );
+  }
+
+  if (candidate.privacyClearTimeRange !== undefined) {
+    if (
+      !["last-hour", "last-24-hours", "last-7-days", "all-time"].includes(
+        candidate.privacyClearTimeRange,
+      )
+    ) {
+      throw new Error("Invalid privacy clear time range.");
+    }
+    patch.privacyClearTimeRange = candidate.privacyClearTimeRange;
+  }
+
+  if (candidate.clearHistoryOnClose !== undefined) {
+    patch.clearHistoryOnClose = readBoolean(
+      candidate.clearHistoryOnClose,
+      "clear history on close setting",
+    );
+  }
+
+  if (candidate.clearCacheOnClose !== undefined) {
+    patch.clearCacheOnClose = readBoolean(
+      candidate.clearCacheOnClose,
+      "clear cache on close setting",
+    );
+  }
+
+  if (candidate.clearDownloadsOnClose !== undefined) {
+    patch.clearDownloadsOnClose = readBoolean(
+      candidate.clearDownloadsOnClose,
+      "clear downloads on close setting",
+    );
   }
 
   if (candidate.hardwareAcceleration !== undefined) {
@@ -1055,11 +1310,50 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
     patch.increaseContrast = readBoolean(candidate.increaseContrast, "contrast setting");
   }
 
+  if (candidate.reduceTransparency !== undefined) {
+    patch.reduceTransparency = readBoolean(
+      candidate.reduceTransparency,
+      "transparency setting",
+    );
+  }
+
+  if (candidate.focusRingVisibility !== undefined) {
+    if (!["subtle", "standard", "high"].includes(candidate.focusRingVisibility)) {
+      throw new Error("Invalid focus ring visibility.");
+    }
+    patch.focusRingVisibility = candidate.focusRingVisibility;
+  }
+
   if (candidate.textScale !== undefined) {
-    if (!["normal", "large"].includes(candidate.textScale)) {
+    if (!["small", "default", "large", "extra-large"].includes(candidate.textScale)) {
       throw new Error("Invalid text scale.");
     }
     patch.textScale = candidate.textScale;
+  }
+
+  if (candidate.alwaysShowFocusIndicators !== undefined) {
+    patch.alwaysShowFocusIndicators = readBoolean(
+      candidate.alwaysShowFocusIndicators,
+      "focus indicator setting",
+    );
+  }
+
+  if (candidate.tabThroughToolbarControls !== undefined) {
+    patch.tabThroughToolbarControls = readBoolean(
+      candidate.tabThroughToolbarControls,
+      "toolbar tab navigation setting",
+    );
+  }
+
+  if (candidate.underlineLinks !== undefined) {
+    patch.underlineLinks = readBoolean(candidate.underlineLinks, "underline links setting");
+  }
+
+  if (candidate.readableFontSmoothing !== undefined) {
+    patch.readableFontSmoothing = readBoolean(
+      candidate.readableFontSmoothing,
+      "font smoothing setting",
+    );
   }
 
   if (candidate.pageZoom !== undefined) {
@@ -1068,6 +1362,10 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
     }
 
     patch.pageZoom = Math.max(0.67, Math.min(1.5, Number(candidate.pageZoom)));
+  }
+
+  if (candidate.tabHoverPreview !== undefined) {
+    patch.tabHoverPreview = readBoolean(candidate.tabHoverPreview, "tab hover preview setting");
   }
 
   return patch;
@@ -1126,18 +1424,93 @@ function readPermissionPolicy(value: unknown): Record<SitePermissionKey, Permiss
     "popups",
     "downloads",
     "clipboard",
+    "autoplay",
+    "javascript",
+    "images",
   ];
   const policy = {} as Record<SitePermissionKey, PermissionPolicy>;
 
   for (const key of keys) {
     const permission = candidate[key];
-    if (permission !== "block" && permission !== "ask") {
+    if (permission !== "block" && permission !== "ask" && permission !== "allow") {
       throw new Error(`Invalid ${key} permission policy.`);
     }
     policy[key] = permission;
   }
 
   return policy;
+}
+
+function readPermissionExceptions(value: unknown): BrowserSettings["sitePermissionExceptions"] {
+  if (!Array.isArray(value) || value.length > 80) {
+    throw new Error("Invalid site permission exceptions.");
+  }
+
+  const keys: SitePermissionKey[] = [
+    "camera",
+    "microphone",
+    "location",
+    "notifications",
+    "popups",
+    "downloads",
+    "clipboard",
+    "autoplay",
+    "javascript",
+    "images",
+  ];
+  const seen = new Set<string>();
+  const exceptions: BrowserSettings["sitePermissionExceptions"] = [];
+
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error("Invalid site permission exception.");
+    }
+
+    const candidate = item as Partial<BrowserSettings["sitePermissionExceptions"][number]>;
+    const host = readString(candidate.host, "permission exception host", 253)
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .split(/[/?#]/)[0]
+      ?.replace(/^www\./, "");
+    if (!host || !/^[a-z0-9.-]{1,253}$/.test(host)) {
+      throw new Error("Invalid permission exception host.");
+    }
+
+    if (!candidate.permission || !keys.includes(candidate.permission)) {
+      throw new Error("Invalid permission exception type.");
+    }
+
+    if (
+      candidate.policy !== "ask" &&
+      candidate.policy !== "allow" &&
+      candidate.policy !== "block"
+    ) {
+      throw new Error("Invalid permission exception policy.");
+    }
+
+    const dedupeKey = `${host}:${candidate.permission}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+
+    seen.add(dedupeKey);
+    exceptions.push({
+      id:
+        typeof candidate.id === "string" && candidate.id.length <= 80
+          ? candidate.id
+          : randomUUID(),
+      host,
+      permission: candidate.permission,
+      policy: candidate.policy,
+      updatedAt:
+        Number.isFinite(candidate.updatedAt) && candidate.updatedAt
+          ? Number(candidate.updatedAt)
+          : Date.now(),
+    });
+  }
+
+  return exceptions;
 }
 
 function getRuntimeInfo(): RuntimeInfo {
@@ -1186,6 +1559,11 @@ function applyStartupHardwareAccelerationPreference(): void {
 }
 
 app.whenReady().then(() => {
+  try {
+    ensureExtensionsWorkspace();
+  } catch (error) {
+    console.warn(error instanceof Error ? error.message : "Extensions workspace setup failed.");
+  }
   configureSecurity();
   registerIpcHandlers();
   createInitialWindows();

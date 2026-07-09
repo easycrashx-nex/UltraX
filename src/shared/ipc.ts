@@ -61,6 +61,7 @@ export const IPC = {
 
   loadUnpackedExtension: "extensions:load-unpacked",
   validateUnpackedExtension: "extensions:validate-unpacked",
+  ensureExtensionsWorkspace: "extensions:ensure-workspace",
   setExtensionEnabled: "extensions:set-enabled",
   removeExtension: "extensions:remove",
   reloadExtensions: "extensions:reload",

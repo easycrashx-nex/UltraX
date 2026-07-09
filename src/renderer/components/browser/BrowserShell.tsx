@@ -266,12 +266,16 @@ export function BrowserShell({ state }: BrowserShellProps) {
       <TabStrip
         tabs={state.tabs}
         activeTabId={state.activeTabId}
+        tabHoverPreviewEnabled={state.settings.tabHoverPreview}
+        reducedMotion={state.settings.reducedMotion}
         onCreateTab={() => void window.ultraX.createTab()}
         onSwitchTab={(tabId) => void window.ultraX.switchTab(tabId)}
         onCloseTab={(tabId) => void window.ultraX.closeTab(tabId)}
         onDuplicateTab={(tabId) => void window.ultraX.duplicateTab(tabId)}
         onPinTab={(tabId, pinned) => void window.ultraX.pinTab(tabId, pinned)}
-        onReorderTab={(tabId, targetTabId) => void window.ultraX.reorderTab(tabId, targetTabId)}
+        onReorderTab={(tabId, targetTabId, placement) =>
+          void window.ultraX.reorderTab(tabId, targetTabId, placement)
+        }
         onReloadTab={(tabId) =>
           void window.ultraX.switchTab(tabId).then(() => window.ultraX.reload())
         }
@@ -378,6 +382,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
           })
         }
         onOpenReleasesPage={() => window.ultraX.openReleasesPage()}
+        onEnsureExtensionsWorkspace={() => window.ultraX.ensureExtensionsWorkspace()}
         onLoadUnpackedExtension={() => window.ultraX.loadUnpackedExtension()}
         onValidateUnpackedExtension={() => window.ultraX.validateUnpackedExtension()}
         onSetExtensionEnabled={(extensionId, enabled) =>

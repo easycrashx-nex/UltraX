@@ -1,6 +1,6 @@
 {
   "name": "ultrax",
-  "version": "1.0.9",
+  "version": "1.1.2",
   "private": true,
   "productName": "UltraX Browser",
   "description": "UltraX Browser is a custom Electron desktop browser with React, TypeScript, Tailwind CSS, and WebContentsView tabs.",

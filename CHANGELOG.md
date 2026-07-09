@@ -1,5 +1,56 @@
 # UltraX Browser Changelog
 
+## 1.1.2 - Settings, Privacy, Security, Accessibility, and Tab Preview Update
+
+### Added
+
+- Expanded Accessibility with motion, animation level, contrast, reduced transparency, focus ring visibility, text size, toolbar tab navigation, link underlines, font smoothing, and New Tab visual comfort controls.
+- Built a real Permissions center with default policies for camera, microphone, location, notifications, clipboard, downloads, and pop-ups, plus site-specific exceptions.
+- Added controlled Electron permission prompts with Allow/Block decisions and optional remembered site exceptions for supported web permissions.
+- Added tab hover previews with title, URL, favicon/loading state, pinned state, and audio/mute metadata.
+- Added privacy controls for browsing data, Do Not Track, third-party-cookie preference storage, cleanup-on-close, and settings export.
+- Added security controls and status sections for HTTPS upgrades, dangerous download warnings, extension permission review, remote extension trust, and Electron isolation posture.
+
+### Changed
+
+- Fresh installs now default to Google search, an empty custom search template, Google online suggestions enabled, Home behavior set to New Tab, and saved Home URL `https://google.com`.
+- Schemeless domain navigation now respects the secure-connections setting while keeping localhost/IP targets on HTTP.
+- Extension enable/install confirmations now respect the review-extension-permissions setting.
+
+### Security
+
+- Dangerous executable download types now require user confirmation before saving.
+- Pop-up handling now follows the saved pop-up permission policy instead of always opening safe window requests as tabs.
+- Electron security remains strict: `contextIsolation`, `sandbox`, and `webSecurity` stay enabled.
+
+### Tests
+
+- Added E2E coverage for v1.1.2 fresh defaults, accessibility/permission persistence, and tab hover preview appearance/dismissal.
+
+## 1.1.1 - Extensions Folder Auto-Creation Patch
+
+### Fixed
+
+- Added automatic creation of the UltraX extensions workspace under the Electron `userData` directory.
+- Created the required `installed`, `unpacked`, `samples`, `storage`, and `logs` subfolders without deleting or overwriting existing extension data.
+- Updated Open Extensions Folder, Load Unpacked Extension, Validate Extension Folder, local Store actions, extension APIs, and extension logging paths to ensure the workspace exists first.
+- Load and validate dialogs now start in `userData/extensions/unpacked` instead of relying on a missing or relative folder.
+- Added a safe renderer IPC method for ensuring the extensions workspace without exposing arbitrary filesystem access.
+
+## 1.1.0 - Tab Drag Stability and Polish
+
+### Improved
+
+- Replaced native HTML tab dragging with a controlled pointer-drag system to remove duplicate drag previews, stacked labels, and unstable tab overlap.
+- Added a stable tab drag placeholder and a single elevated floating drag preview with clean layering below context menus.
+- Normal tabs and pinned tabs now render as separate drag groups, keeping pinned tabs on the left and preventing cross-group visual mixing.
+- Tab reordering now supports explicit before/after placement so drops at the end of a tab group settle correctly.
+- Empty chrome remains draggable while tabs, close buttons, context menus, and window controls stay in no-drag regions.
+
+### Tests
+
+- Added Playwright coverage for pointer-based tab dragging, pinned tab reordering, and pinned/normal boundary stability.
+
 ## 1.0.9 - Stability and Browser UX Update
 
 ### Added
@@ -241,7 +292,7 @@ UltraX v1.0.1 focuses on making the Settings experience feel calmer, more premiu
 - Extensions, Plugins, AI, Profiles, and Updates remain structured MVP pages until the underlying browser subsystems exist.
 - Auto-update and code signing are not configured yet.
 
-### Recommended Next Steps for 1.1.0
+### Recommended Next Steps for Later Releases
 
 - Add a real extension/plugin subsystem.
 - Add auto-update infrastructure and signed Windows releases.

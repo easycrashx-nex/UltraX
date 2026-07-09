@@ -56,7 +56,9 @@ export function normalizeNavigationInput(
       IPV4_PATTERN.test(withoutSlashes) ||
       HOST_WITH_PORT_PATTERN.test(withoutSlashes)
         ? "http://"
-        : "https://";
+        : settings.alwaysUseSecureConnections
+          ? "https://"
+          : "http://";
     const parsed = new URL(`${protocol}${withoutSlashes}`);
 
     return { kind: "web", url: parsed.toString() };
@@ -84,7 +86,7 @@ export function normalizeNavigationInput(
     }
   }
 
-  const engineBaseUrl = SEARCH_URLS[settings.searchEngine] || SEARCH_URLS.duckduckgo;
+  const engineBaseUrl = SEARCH_URLS[settings.searchEngine] || SEARCH_URLS.google;
   return { kind: "web", url: `${engineBaseUrl}${encodeURIComponent(trimmed)}` };
 }
 

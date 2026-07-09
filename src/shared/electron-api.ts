@@ -7,7 +7,9 @@ import type {
   ExtensionRuntimeLogLevel,
   ExtensionStoreItem,
   ExtensionValidationResult,
+  ExtensionsWorkspaceInfo,
   InstalledExtension,
+  TabReorderPlacement,
   RuntimeInfo,
   UpdateStatusSnapshot,
   ViewInsets,
@@ -23,7 +25,11 @@ export type UltraXApi = {
   closeTab: (tabId: string) => Promise<void>;
   duplicateTab: (tabId: string) => Promise<void>;
   pinTab: (tabId: string, pinned: boolean) => Promise<void>;
-  reorderTab: (tabId: string, targetTabId: string) => Promise<void>;
+  reorderTab: (
+    tabId: string,
+    targetTabId: string,
+    placement?: TabReorderPlacement,
+  ) => Promise<void>;
   closeOtherTabs: (tabId: string) => Promise<void>;
   closeTabsToRight: (tabId: string) => Promise<void>;
   moveTabToNewWindow: (tabId: string) => Promise<void>;
@@ -80,6 +86,7 @@ export type UltraXApi = {
 
   clearBookmarks: () => Promise<void>;
 
+  ensureExtensionsWorkspace: () => Promise<ExtensionsWorkspaceInfo>;
   loadUnpackedExtension: () => Promise<InstalledExtension | null>;
   validateUnpackedExtension: () => Promise<ExtensionValidationResult | null>;
   setExtensionEnabled: (extensionId: string, enabled: boolean) => Promise<void>;

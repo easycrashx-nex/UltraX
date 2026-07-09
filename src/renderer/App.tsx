@@ -61,10 +61,17 @@ function applyShellPreferences(settings: BrowserSettings) {
   applyTheme(settings.theme);
 
   const root = document.documentElement;
-  root.classList.toggle("glass-off", !settings.glassMode);
+  root.classList.toggle("glass-off", !settings.glassMode || settings.reduceTransparency);
   root.classList.toggle("contrast-more", settings.increaseContrast);
+  root.classList.toggle("text-small", settings.textScale === "small");
   root.classList.toggle("text-large", settings.textScale === "large");
+  root.classList.toggle("text-extra-large", settings.textScale === "extra-large");
   root.classList.toggle("motion-reduced", settings.reducedMotion);
+  root.classList.toggle("focus-always", settings.alwaysShowFocusIndicators);
+  root.classList.toggle("focus-subtle", settings.focusRingVisibility === "subtle");
+  root.classList.toggle("focus-high", settings.focusRingVisibility === "high");
+  root.classList.toggle("links-underlined", settings.underlineLinks);
+  root.classList.toggle("font-readable", settings.readableFontSmoothing);
   root.classList.toggle("density-compact", settings.toolbarDensity === "compact");
   root.classList.toggle("density-spacious", settings.toolbarDensity === "spacious");
   root.classList.toggle("animation-minimal", settings.animationLevel === "minimal");

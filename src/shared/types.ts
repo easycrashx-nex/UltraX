@@ -63,7 +63,15 @@ export type HistoryRetention = "forever" | "30-days" | "7-days";
 
 export type DownloadRetention = "forever" | "30-days" | "session";
 
-export type PermissionPolicy = "block" | "ask";
+export type PermissionPolicy = "block" | "ask" | "allow";
+
+export type PermissionException = {
+  id: string;
+  host: string;
+  permission: SitePermissionKey;
+  policy: PermissionPolicy;
+  updatedAt: number;
+};
 
 export type PerformanceMode = "efficiency" | "balanced" | "performance" | "ultra";
 
@@ -72,6 +80,8 @@ export type ShaderPerformance = "low" | "balanced" | "high" | "ultra";
 export type ShaderFpsCap = "30" | "60" | "unlimited";
 
 export type TabSuspendDelay = "5-minutes" | "15-minutes" | "30-minutes" | "1-hour" | "never";
+
+export type TabReorderPlacement = "before" | "after";
 
 export type UpdateChannel = "stable" | "beta" | "nightly";
 
@@ -200,6 +210,15 @@ export type ExtensionStoreItem = {
   updateAvailable: boolean;
 };
 
+export type ExtensionsWorkspaceInfo = {
+  root: string;
+  installed: string;
+  unpacked: string;
+  samples: string;
+  storage: string;
+  logs: string;
+};
+
 export type ExtensionValidationResult = {
   ok: boolean;
   manifest?: UltraXExtensionManifest;
@@ -234,7 +253,16 @@ export type SitePermissionKey =
   | "notifications"
   | "popups"
   | "downloads"
-  | "clipboard";
+  | "clipboard"
+  | "autoplay"
+  | "javascript"
+  | "images";
+
+export type FocusRingVisibility = "subtle" | "standard" | "high";
+
+export type TextScale = "small" | "default" | "large" | "extra-large";
+
+export type PrivacyClearTimeRange = "last-hour" | "last-24-hours" | "last-7-days" | "all-time";
 
 export type DownloadState =
   | "progressing"
@@ -337,6 +365,17 @@ export type BrowserSettings = {
   doNotTrack: boolean;
   blockThirdPartyCookies: boolean;
   permissionPolicy: Record<SitePermissionKey, PermissionPolicy>;
+  sitePermissionExceptions: PermissionException[];
+  safeBrowsing: boolean;
+  alwaysUseSecureConnections: boolean;
+  blockInsecureContent: boolean;
+  warnDangerousDownloads: boolean;
+  reviewExtensionPermissions: boolean;
+  blockUnsignedRemoteExtensions: boolean;
+  privacyClearTimeRange: PrivacyClearTimeRange;
+  clearHistoryOnClose: boolean;
+  clearCacheOnClose: boolean;
+  clearDownloadsOnClose: boolean;
   hardwareAcceleration: boolean;
   performanceMode: PerformanceMode;
   backgroundShaderPerformance: ShaderPerformance;
@@ -372,8 +411,15 @@ export type BrowserSettings = {
   extensionStore: ExtensionStoreConfig;
   updates: UpdateSettings;
   increaseContrast: boolean;
-  textScale: "normal" | "large";
+  reduceTransparency: boolean;
+  focusRingVisibility: FocusRingVisibility;
+  textScale: TextScale;
+  alwaysShowFocusIndicators: boolean;
+  tabThroughToolbarControls: boolean;
+  underlineLinks: boolean;
+  readableFontSmoothing: boolean;
   pageZoom: number;
+  tabHoverPreview: boolean;
 };
 
 export type RuntimeMemoryInfo = {

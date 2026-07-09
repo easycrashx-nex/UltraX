@@ -59,7 +59,7 @@ Until a real signing certificate is configured, builds should be treated as unsi
 After configuring signing secrets, download the release artifacts and check signatures:
 
 ```powershell
-Get-AuthenticodeSignature "UltraX-Browser-Setup-1.0.9-x64.exe"
+Get-AuthenticodeSignature "UltraX-Browser-Setup-1.1.2-x64.exe"
 Get-AuthenticodeSignature "UltraX Browser.exe"
 ```
 

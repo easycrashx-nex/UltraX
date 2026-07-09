@@ -36,7 +36,7 @@ import type {
 } from "../shared/types";
 import { ensureBuiltInExtensions } from "./extensions";
 
-const STORAGE_VERSION = 6;
+const STORAGE_VERSION = 7;
 
 type StoredPayload = {
   version: number;
@@ -51,16 +51,22 @@ const SITE_PERMISSION_KEYS: SitePermissionKey[] = [
   "popups",
   "downloads",
   "clipboard",
+  "autoplay",
+  "javascript",
+  "images",
 ];
 
 const DEFAULT_PERMISSION_POLICY: Record<SitePermissionKey, PermissionPolicy> = {
-  camera: "block",
-  microphone: "block",
-  location: "block",
-  notifications: "block",
-  popups: "block",
+  camera: "ask",
+  microphone: "ask",
+  location: "ask",
+  notifications: "ask",
   downloads: "ask",
-  clipboard: "block",
+  clipboard: "ask",
+  popups: "block",
+  autoplay: "block",
+  javascript: "allow",
+  images: "allow",
 };
 
 const DEFAULT_UPDATE_SETTINGS: BrowserSettings["updates"] = {
@@ -75,14 +81,14 @@ const DEFAULT_SEARCH_SUGGESTION_SETTINGS: BrowserSettings["searchSuggestionSetti
   historySuggestions: true,
   bookmarkSuggestions: true,
   openTabSuggestions: true,
-  onlineSuggestions: false,
-  suggestionProvider: "current-search-engine",
+  onlineSuggestions: true,
+  suggestionProvider: "google",
 };
 
 export const DEFAULT_SETTINGS: BrowserSettings = {
   browserName: "UltraX",
-  searchEngine: "duckduckgo",
-  customSearchUrl: "https://duckduckgo.com/?q={query}",
+  searchEngine: "google",
+  customSearchUrl: "",
   searchSuggestions: true,
   searchSuggestionSettings: DEFAULT_SEARCH_SUGGESTION_SETTINGS,
   addressBarSearch: true,
@@ -90,7 +96,7 @@ export const DEFAULT_SETTINGS: BrowserSettings = {
   startupPages: [],
   closeBehavior: "close-and-restore-session",
   homeBehavior: "new-tab",
-  homeUrl: "https://duckduckgo.com/",
+  homeUrl: "https://google.com",
   theme: "dark",
   glassMode: true,
   accentColor: "blue",
@@ -119,6 +125,17 @@ export const DEFAULT_SETTINGS: BrowserSettings = {
   doNotTrack: false,
   blockThirdPartyCookies: false,
   permissionPolicy: DEFAULT_PERMISSION_POLICY,
+  sitePermissionExceptions: [],
+  safeBrowsing: true,
+  alwaysUseSecureConnections: true,
+  blockInsecureContent: true,
+  warnDangerousDownloads: true,
+  reviewExtensionPermissions: true,
+  blockUnsignedRemoteExtensions: true,
+  privacyClearTimeRange: "all-time",
+  clearHistoryOnClose: false,
+  clearCacheOnClose: false,
+  clearDownloadsOnClose: false,
   hardwareAcceleration: true,
   performanceMode: "balanced",
   backgroundShaderPerformance: "balanced",
@@ -156,8 +173,15 @@ export const DEFAULT_SETTINGS: BrowserSettings = {
   },
   updates: DEFAULT_UPDATE_SETTINGS,
   increaseContrast: false,
-  textScale: "normal",
+  reduceTransparency: false,
+  focusRingVisibility: "standard",
+  textScale: "default",
+  alwaysShowFocusIndicators: true,
+  tabThroughToolbarControls: true,
+  underlineLinks: false,
+  readableFontSmoothing: true,
   pageZoom: 1,
+  tabHoverPreview: true,
 };
 
 export function createDefaultState(): BrowserState {
@@ -319,9 +343,10 @@ function normalizeState(state?: Partial<BrowserState>): BrowserState {
 
 function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings {
   const legacySettings = settings as
-    | { homeBehavior?: HomeBehavior | "last-session" }
+    | { homeBehavior?: HomeBehavior | "last-session"; textScale?: BrowserSettings["textScale"] | "normal" }
     | undefined;
   const legacyHomeBehavior = legacySettings?.homeBehavior;
+  const legacyTextScale = legacySettings?.textScale;
 
   const startupBehavior =
     legacyHomeBehavior === "last-session"
@@ -335,7 +360,7 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
   const permissionPolicy = { ...DEFAULT_PERMISSION_POLICY };
   for (const key of SITE_PERMISSION_KEYS) {
     const value = settings?.permissionPolicy?.[key];
-    if (value === "ask" || value === "block") {
+    if (value === "ask" || value === "block" || value === "allow") {
       permissionPolicy[key] = value;
     }
   }
@@ -484,6 +509,47 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
       DEFAULT_SETTINGS.blockThirdPartyCookies,
     ),
     permissionPolicy,
+    sitePermissionExceptions: normalizePermissionExceptions(settings?.sitePermissionExceptions),
+    safeBrowsing: boolValue(settings?.safeBrowsing, DEFAULT_SETTINGS.safeBrowsing),
+    alwaysUseSecureConnections: boolValue(
+      settings?.alwaysUseSecureConnections,
+      DEFAULT_SETTINGS.alwaysUseSecureConnections,
+    ),
+    blockInsecureContent: boolValue(
+      settings?.blockInsecureContent,
+      DEFAULT_SETTINGS.blockInsecureContent,
+    ),
+    warnDangerousDownloads: boolValue(
+      settings?.warnDangerousDownloads,
+      DEFAULT_SETTINGS.warnDangerousDownloads,
+    ),
+    reviewExtensionPermissions: boolValue(
+      settings?.reviewExtensionPermissions,
+      DEFAULT_SETTINGS.reviewExtensionPermissions,
+    ),
+    blockUnsignedRemoteExtensions: boolValue(
+      settings?.blockUnsignedRemoteExtensions,
+      DEFAULT_SETTINGS.blockUnsignedRemoteExtensions,
+    ),
+    privacyClearTimeRange:
+      enumValue(settings?.privacyClearTimeRange, [
+        "last-hour",
+        "last-24-hours",
+        "last-7-days",
+        "all-time",
+      ]) ?? DEFAULT_SETTINGS.privacyClearTimeRange,
+    clearHistoryOnClose: boolValue(
+      settings?.clearHistoryOnClose,
+      DEFAULT_SETTINGS.clearHistoryOnClose,
+    ),
+    clearCacheOnClose: boolValue(
+      settings?.clearCacheOnClose,
+      DEFAULT_SETTINGS.clearCacheOnClose,
+    ),
+    clearDownloadsOnClose: boolValue(
+      settings?.clearDownloadsOnClose,
+      DEFAULT_SETTINGS.clearDownloadsOnClose,
+    ),
     hardwareAcceleration: boolValue(
       settings?.hardwareAcceleration,
       DEFAULT_SETTINGS.hardwareAcceleration,
@@ -599,11 +665,34 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
     extensionStore: normalizeExtensionStoreConfig(settings?.extensionStore),
     updates: normalizeUpdateSettings(settings?.updates),
     increaseContrast: boolValue(settings?.increaseContrast, DEFAULT_SETTINGS.increaseContrast),
-    textScale: enumValue(settings?.textScale, ["normal", "large"]) ?? DEFAULT_SETTINGS.textScale,
+    reduceTransparency: boolValue(
+      settings?.reduceTransparency,
+      DEFAULT_SETTINGS.reduceTransparency,
+    ),
+    focusRingVisibility:
+      enumValue(settings?.focusRingVisibility, ["subtle", "standard", "high"]) ??
+      DEFAULT_SETTINGS.focusRingVisibility,
+    textScale:
+      enumValue(legacyTextScale, ["small", "default", "large", "extra-large"]) ??
+      (legacyTextScale === "normal" ? "default" : DEFAULT_SETTINGS.textScale),
+    alwaysShowFocusIndicators: boolValue(
+      settings?.alwaysShowFocusIndicators,
+      DEFAULT_SETTINGS.alwaysShowFocusIndicators,
+    ),
+    tabThroughToolbarControls: boolValue(
+      settings?.tabThroughToolbarControls,
+      DEFAULT_SETTINGS.tabThroughToolbarControls,
+    ),
+    underlineLinks: boolValue(settings?.underlineLinks, DEFAULT_SETTINGS.underlineLinks),
+    readableFontSmoothing: boolValue(
+      settings?.readableFontSmoothing,
+      DEFAULT_SETTINGS.readableFontSmoothing,
+    ),
     pageZoom:
       Number.isFinite(settings?.pageZoom) && settings?.pageZoom
         ? Math.max(0.67, Math.min(1.5, Number(settings.pageZoom)))
         : DEFAULT_SETTINGS.pageZoom,
+    tabHoverPreview: boolValue(settings?.tabHoverPreview, DEFAULT_SETTINGS.tabHoverPreview),
   };
 }
 
@@ -754,6 +843,60 @@ function normalizeUpdateSettings(value: unknown): BrowserSettings["updates"] {
     channel,
     ...(lastCheckedAt ? { lastCheckedAt } : {}),
   };
+}
+
+function normalizePermissionExceptions(value: unknown): BrowserSettings["sitePermissionExceptions"] {
+  if (!Array.isArray(value)) {
+    return DEFAULT_SETTINGS.sitePermissionExceptions;
+  }
+
+  const seen = new Set<string>();
+  const exceptions: BrowserSettings["sitePermissionExceptions"] = [];
+  for (const item of value.slice(0, 80)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+
+    const candidate = item as Partial<BrowserSettings["sitePermissionExceptions"][number]>;
+    const host = normalizePermissionHost(candidate.host);
+    const permission = enumValue(candidate.permission, SITE_PERMISSION_KEYS);
+    const policy = enumValue<PermissionPolicy>(candidate.policy, ["ask", "allow", "block"]);
+    if (!host || !permission || !policy) {
+      continue;
+    }
+
+    const key = `${host}:${permission}`;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    exceptions.push({
+      id:
+        typeof candidate.id === "string" && candidate.id.length <= 80
+          ? candidate.id
+          : randomUUID(),
+      host,
+      permission,
+      policy,
+      updatedAt:
+        Number.isFinite(candidate.updatedAt) && candidate.updatedAt
+          ? Number(candidate.updatedAt)
+          : Date.now(),
+    });
+  }
+
+  return exceptions;
+}
+
+function normalizePermissionHost(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim().toLowerCase().replace(/^https?:\/\//, "");
+  const host = trimmed.split(/[/?#]/)[0]?.replace(/^www\./, "") ?? "";
+  return /^[a-z0-9.-]{1,253}$/.test(host) ? host : "";
 }
 
 function normalizeExtensionStorage(value: unknown): Record<string, Record<string, unknown>> {

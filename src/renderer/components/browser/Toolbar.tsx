@@ -95,6 +95,7 @@ export function Toolbar({
   const bookmarked = isBookmarked(activeTab, bookmarks);
   const isCompact = settings.toolbarDensity === "compact";
   const isSpacious = settings.toolbarDensity === "spacious";
+  const toolbarTabIndex = settings.tabThroughToolbarControls ? 0 : -1;
   const visibleBookmarks = bookmarks.slice(0, 6);
   const [focused, setFocused] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
@@ -237,6 +238,7 @@ export function Toolbar({
             size="icon"
             title="Back"
             aria-label="Back"
+            tabIndex={toolbarTabIndex}
             disabled={!activeTab?.canGoBack}
             onClick={onBack}
           >
@@ -248,6 +250,7 @@ export function Toolbar({
             size="icon"
             title="Forward"
             aria-label="Forward"
+            tabIndex={toolbarTabIndex}
             disabled={!activeTab?.canGoForward}
             onClick={onForward}
           >
@@ -259,6 +262,7 @@ export function Toolbar({
             size="icon"
             title={activeTab?.isLoading ? "Stop loading" : "Reload"}
             aria-label={activeTab?.isLoading ? "Stop loading" : "Reload"}
+            tabIndex={toolbarTabIndex}
             disabled={activeTab?.isNewTab}
             onClick={activeTab?.isLoading ? onStopLoading : onReload}
           >
@@ -271,6 +275,7 @@ export function Toolbar({
               size="icon"
               title="Home"
               aria-label="Home"
+              tabIndex={toolbarTabIndex}
               onClick={onHome}
             >
               <Home aria-hidden="true" />
@@ -316,6 +321,7 @@ export function Toolbar({
             size="iconSm"
             title={bookmarked ? "Remove bookmark" : "Bookmark current page"}
             aria-label={bookmarked ? "Remove bookmark" : "Bookmark current page"}
+            tabIndex={toolbarTabIndex}
             disabled={!activeTab || activeTab.isNewTab}
             onClick={onToggleBookmark}
             className={cn(
@@ -371,6 +377,7 @@ export function Toolbar({
           <PanelButton
             label="Bookmarks"
             active={activePanel === "bookmarks"}
+            tabIndex={toolbarTabIndex}
             onClick={() => onOpenPanel(activePanel === "bookmarks" ? null : "bookmarks")}
           >
             <BookmarkIcon aria-hidden="true" />
@@ -378,6 +385,7 @@ export function Toolbar({
           <PanelButton
             label="History"
             active={activePanel === "history"}
+            tabIndex={toolbarTabIndex}
             onClick={() => onOpenPanel(activePanel === "history" ? null : "history")}
           >
             <Clock aria-hidden="true" />
@@ -385,6 +393,7 @@ export function Toolbar({
           <PanelButton
             label="Downloads"
             active={activePanel === "downloads"}
+            tabIndex={toolbarTabIndex}
             onClick={() => onOpenPanel(activePanel === "downloads" ? null : "downloads")}
           >
             <Download aria-hidden="true" />
@@ -396,6 +405,7 @@ export function Toolbar({
             title="Quick Settings"
             aria-label="Quick Settings"
             aria-pressed={quickSettingsOpen}
+            tabIndex={toolbarTabIndex}
             data-quick-settings-trigger="true"
             onClick={onToggleQuickSettings}
             className={cn(quickSettingsOpen && "border-border bg-accent text-foreground")}
@@ -456,7 +466,7 @@ function buildLocalSuggestions(
 
   const suggestions: AddressSuggestion[] = [];
   const seenTargets = new Set<string>();
-  const directUrl = getDirectNavigationValue(query);
+  const directUrl = getDirectNavigationValue(query, settings);
   const suggestionSettings = settings.searchSuggestionSettings;
 
   if (directUrl) {
@@ -558,7 +568,7 @@ function matchesSuggestionQuery(query: string, title: string, url: string): bool
   return haystack.includes(normalizedQuery);
 }
 
-function getDirectNavigationValue(input: string): string | null {
+function getDirectNavigationValue(input: string, settings: BrowserSettings): string | null {
   const trimmed = input.trim();
   if (!trimmed) {
     return null;
@@ -597,7 +607,9 @@ function getDirectNavigationValue(input: string): string | null {
     hostWithPortPattern.test(withoutSlashes) ||
     ipv4Pattern.test(withoutSlashes)
       ? "http://"
-      : "https://";
+      : settings.alwaysUseSecureConnections
+        ? "https://"
+        : "http://";
 
   try {
     return new URL(`${protocol}${withoutSlashes}`).toString();
@@ -612,7 +624,7 @@ function canUseOnlineSuggestions(settings: BrowserSettings, query: string): bool
     !settings.doNotTrack &&
     settings.addressBarSearch &&
     query.length >= 2 &&
-    !getDirectNavigationValue(query) &&
+    !getDirectNavigationValue(query, settings) &&
     Boolean(resolveOnlineSuggestionProvider(settings))
   );
 }
@@ -724,11 +736,13 @@ function hashString(value: string): string {
 function PanelButton({
   label,
   active,
+  tabIndex,
   onClick,
   children,
 }: {
   label: string;
   active: boolean;
+  tabIndex: number;
   onClick: () => void;
   children: ReactNode;
 }) {
@@ -740,6 +754,7 @@ function PanelButton({
       title={label}
       aria-label={label}
       aria-pressed={active}
+      tabIndex={tabIndex}
       onClick={onClick}
       className={cn(active && "border-border bg-accent text-foreground")}
     >

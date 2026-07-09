@@ -14,19 +14,29 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type TabStripProps = {
   tabs: BrowserTab[];
   activeTabId: string | null;
+  tabHoverPreviewEnabled: boolean;
+  reducedMotion: boolean;
   onCreateTab: () => void;
   onSwitchTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onDuplicateTab: (tabId: string) => void;
   onPinTab: (tabId: string, pinned: boolean) => void;
-  onReorderTab: (tabId: string, targetTabId: string) => void;
+  onReorderTab: (tabId: string, targetTabId: string, placement?: ReorderPlacement) => void;
   onReloadTab: (tabId: string) => void;
   onCloseOtherTabs: (tabId: string) => void;
   onCloseTabsToRight: (tabId: string) => void;
@@ -43,9 +53,38 @@ type TabMenuState = {
   y: number;
 };
 
+type TabPreviewState = {
+  tabId: string;
+  x: number;
+  y: number;
+};
+
+type ReorderPlacement = "before" | "after";
+
+type TabDragState = {
+  tabId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  height: number;
+  isPinned: boolean;
+  isDragging: boolean;
+  dropIndex: number;
+};
+
+const DRAG_START_THRESHOLD = 5;
+const DROP_CANCEL_Y_MARGIN = 42;
+
 export function TabStrip({
   tabs,
   activeTabId,
+  tabHoverPreviewEnabled,
+  reducedMotion,
   onCreateTab,
   onSwitchTab,
   onCloseTab,
@@ -61,13 +100,40 @@ export function TabStrip({
   onToggleMaximize,
   onCloseWindow,
 }: TabStripProps) {
-  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
-  const [dropTargetTabId, setDropTargetTabId] = useState<string | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+  const dragStateRef = useRef<TabDragState | null>(null);
+  const suppressClickRef = useRef(false);
+  const hoverPreviewTimerRef = useRef<number | null>(null);
+  const [dragState, setDragState] = useState<TabDragState | null>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
+  const [preview, setPreview] = useState<TabPreviewState | null>(null);
   const menuTab = useMemo(
     () => tabs.find((tab) => tab.id === menu?.tabId),
     [menu?.tabId, tabs],
   );
+  const pinnedTabs = useMemo(() => tabs.filter((tab) => tab.isPinned), [tabs]);
+  const normalTabs = useMemo(() => tabs.filter((tab) => !tab.isPinned), [tabs]);
+  const ghostTab = useMemo(
+    () => tabs.find((tab) => tab.id === dragState?.tabId) ?? null,
+    [dragState?.tabId, tabs],
+  );
+  const previewTab = useMemo(
+    () => tabs.find((tab) => tab.id === preview?.tabId) ?? null,
+    [preview?.tabId, tabs],
+  );
+
+  const clearHoverPreviewTimer = useCallback(() => {
+    if (hoverPreviewTimerRef.current !== null) {
+      window.clearTimeout(hoverPreviewTimerRef.current);
+      hoverPreviewTimerRef.current = null;
+    }
+  }, []);
+
+  const closePreview = useCallback(() => {
+    clearHoverPreviewTimer();
+    setPreview(null);
+  }, [clearHoverPreviewTimer]);
 
   useEffect(() => {
     if (!menu) {
@@ -85,7 +151,226 @@ export function TabStrip({
     };
   }, [menu]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closePreview();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("blur", closePreview);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("blur", closePreview);
+    };
+  }, [closePreview]);
+
+  useEffect(() => {
+    if (dragState?.isDragging) {
+      closePreview();
+    }
+  }, [closePreview, dragState?.isDragging]);
+
+  useEffect(() => () => clearHoverPreviewTimer(), [clearHoverPreviewTimer]);
+
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
+
+  const setTabElement = useCallback((tabId: string, element: HTMLButtonElement | null) => {
+    if (element) {
+      tabRefs.current.set(tabId, element);
+      return;
+    }
+
+    tabRefs.current.delete(tabId);
+  }, []);
+
+  const calculateDropIndex = useCallback(
+    (tabId: string, isPinned: boolean, pointerX: number) => {
+      const sameGroupTabs = tabs.filter(
+        (tab) => Boolean(tab.isPinned) === isPinned && tab.id !== tabId,
+      );
+
+      if (sameGroupTabs.length === 0) {
+        return 0;
+      }
+
+      const rects = sameGroupTabs
+        .map((tab) => {
+          const element = tabRefs.current.get(tab.id);
+          if (!element) {
+            return null;
+          }
+
+          const rect = element.getBoundingClientRect();
+          return {
+            left: rect.left,
+            midpoint: rect.left + rect.width / 2,
+          };
+        })
+        .filter((rect): rect is { left: number; midpoint: number } => rect !== null)
+        .sort((a, b) => a.left - b.left);
+
+      if (rects.length === 0) {
+        return 0;
+      }
+
+      return rects.reduce((index, rect) => (pointerX > rect.midpoint ? index + 1 : index), 0);
+    },
+    [tabs],
+  );
+
+  const getPreviewTabs = useCallback(
+    (groupTabs: BrowserTab[], isPinned: boolean) => {
+      if (!dragState?.isDragging || dragState.isPinned !== isPinned) {
+        return groupTabs;
+      }
+
+      const draggedTab = groupTabs.find((tab) => tab.id === dragState.tabId);
+      if (!draggedTab) {
+        return groupTabs;
+      }
+
+      const remainingTabs = groupTabs.filter((tab) => tab.id !== draggedTab.id);
+      const dropIndex = Math.max(0, Math.min(dragState.dropIndex, remainingTabs.length));
+
+      return [
+        ...remainingTabs.slice(0, dropIndex),
+        draggedTab,
+        ...remainingTabs.slice(dropIndex),
+      ];
+    },
+    [dragState],
+  );
+
+  const finishTabDrag = useCallback(
+    (state: TabDragState) => {
+      if (!state.isDragging) {
+        setDragState(null);
+        return;
+      }
+
+      const stripRect = stripRef.current?.getBoundingClientRect();
+      const droppedNearStrip =
+        !stripRect ||
+        (state.currentY >= stripRect.top - DROP_CANCEL_Y_MARGIN &&
+          state.currentY <= stripRect.bottom + DROP_CANCEL_Y_MARGIN);
+
+      if (droppedNearStrip) {
+        const groupTabs = tabs.filter((tab) => Boolean(tab.isPinned) === state.isPinned);
+        const draggedTab = groupTabs.find((tab) => tab.id === state.tabId);
+
+        if (draggedTab) {
+          const originalOrder = groupTabs.map((tab) => tab.id).join("|");
+          const remainingTabs = groupTabs.filter((tab) => tab.id !== draggedTab.id);
+          const dropIndex = Math.max(0, Math.min(state.dropIndex, remainingTabs.length));
+          const nextGroupTabs = [
+            ...remainingTabs.slice(0, dropIndex),
+            draggedTab,
+            ...remainingTabs.slice(dropIndex),
+          ];
+          const nextOrder = nextGroupTabs.map((tab) => tab.id).join("|");
+
+          if (nextOrder !== originalOrder) {
+            const nextIndex = nextGroupTabs.findIndex((tab) => tab.id === draggedTab.id);
+            const beforeTab = nextGroupTabs[nextIndex + 1];
+            const afterTab = nextGroupTabs[nextIndex - 1];
+
+            if (beforeTab) {
+              onReorderTab(draggedTab.id, beforeTab.id, "before");
+            } else if (afterTab) {
+              onReorderTab(draggedTab.id, afterTab.id, "after");
+            }
+          }
+        }
+      }
+
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      setDragState(null);
+    },
+    [onReorderTab, tabs],
+  );
+
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const current = dragStateRef.current;
+      if (!current || event.pointerId !== current.pointerId) {
+        return;
+      }
+
+      setDragState((previous) => {
+        if (!previous || event.pointerId !== previous.pointerId) {
+          return previous;
+        }
+
+        const dx = event.clientX - previous.startX;
+        const dy = event.clientY - previous.startY;
+        const isDragging =
+          previous.isDragging || Math.hypot(dx, dy) >= DRAG_START_THRESHOLD;
+        const dropIndex = isDragging
+          ? calculateDropIndex(previous.tabId, previous.isPinned, event.clientX)
+          : previous.dropIndex;
+
+        return {
+          ...previous,
+          currentX: event.clientX,
+          currentY: event.clientY,
+          isDragging,
+          dropIndex,
+        };
+      });
+    };
+
+    const end = (event: PointerEvent) => {
+      const current = dragStateRef.current;
+      if (!current || event.pointerId !== current.pointerId) {
+        return;
+      }
+
+      finishTabDrag({
+        ...current,
+        currentX: event.clientX,
+        currentY: event.clientY,
+      });
+    };
+
+    const cancel = () => {
+      if (!dragStateRef.current) {
+        return;
+      }
+
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      setDragState(null);
+    };
+
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        cancel();
+      }
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("keydown", keydown);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", keydown);
+    };
+  }, [calculateDropIndex, finishTabDrag]);
+
   const openContextMenu = (tab: BrowserTab, x: number, y: number) => {
+    closePreview();
     setMenu({
       tabId: tab.id,
       x: Math.min(x, window.innerWidth - 236),
@@ -93,130 +378,186 @@ export function TabStrip({
     });
   };
 
+  const schedulePreview = (tab: BrowserTab, element: HTMLElement) => {
+    if (!tabHoverPreviewEnabled || dragStateRef.current?.isDragging) {
+      return;
+    }
+
+    clearHoverPreviewTimer();
+    hoverPreviewTimerRef.current = window.setTimeout(() => {
+      const rect = element.getBoundingClientRect();
+      setPreview({
+        tabId: tab.id,
+        x: Math.min(Math.max(10, rect.left), window.innerWidth - 310),
+        y: rect.bottom + 8,
+      });
+    }, reducedMotion ? 520 : 360);
+  };
+
   const runMenuAction = (action: () => void) => {
     action();
     setMenu(null);
   };
 
-  return (
-    <div className="drag-region flex h-10 select-none items-end gap-2 border-b border-border/75 bg-background/90 px-3 backdrop-blur-xl">
-      <div className="flex min-w-0 flex-1 items-end gap-1">
-        {tabs.map((tab) => {
-          const isActive = tab.id === activeTabId;
-          const isDropTarget = tab.id === dropTargetTabId && tab.id !== draggedTabId;
+  const startTabDrag = (tab: BrowserTab, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
 
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              title={`${tab.isMuted ? "Muted - " : tab.isAudible ? "Playing audio - " : ""}${tab.title}`}
-              data-testid="browser-tab"
-              data-tab-id={tab.id}
-              draggable
-              onDragStart={(event) => {
-                setDraggedTabId(tab.id);
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", tab.id);
-              }}
-              onDragOver={(event) => {
-                if (!draggedTabId || draggedTabId === tab.id) {
-                  return;
-                }
-                event.preventDefault();
-                setDropTargetTabId(tab.id);
-              }}
-              onDragLeave={() => {
-                if (dropTargetTabId === tab.id) {
-                  setDropTargetTabId(null);
-                }
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                const sourceTabId = event.dataTransfer.getData("text/plain") || draggedTabId;
-                if (sourceTabId && sourceTabId !== tab.id) {
-                  onReorderTab(sourceTabId, tab.id);
-                }
-                setDraggedTabId(null);
-                setDropTargetTabId(null);
-              }}
-              onDragEnd={() => {
-                setDraggedTabId(null);
-                setDropTargetTabId(null);
-              }}
-              onClick={() => onSwitchTab(tab.id)}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                openContextMenu(tab, event.clientX, event.clientY);
+    const target = event.target as HTMLElement;
+    if (target.closest("[data-tab-action]")) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const groupTabs = tab.isPinned ? pinnedTabs : normalTabs;
+    const dropIndex = Math.max(
+      0,
+      groupTabs.findIndex((item) => item.id === tab.id),
+    );
+
+    setMenu(null);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragState({
+      tabId: tab.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+      isPinned: Boolean(tab.isPinned),
+      isDragging: false,
+      dropIndex,
+    });
+  };
+
+  const renderTab = (tab: BrowserTab) => {
+    const isActive = tab.id === activeTabId;
+    const isDragSource = dragState?.tabId === tab.id;
+    const isDragPlaceholder = Boolean(isDragSource && dragState?.isDragging);
+
+    return (
+      <button
+        key={tab.id}
+        ref={(element) => setTabElement(tab.id, element)}
+        type="button"
+        title={`${tab.isMuted ? "Muted - " : tab.isAudible ? "Playing audio - " : ""}${tab.title}`}
+        data-testid="browser-tab"
+        data-tab-id={tab.id}
+        aria-grabbed={isDragPlaceholder}
+        onPointerDown={(event) => startTabDrag(tab, event)}
+        onPointerEnter={(event) => schedulePreview(tab, event.currentTarget)}
+        onPointerLeave={closePreview}
+        onClick={() => {
+          if (suppressClickRef.current) {
+            return;
+          }
+
+          closePreview();
+          onSwitchTab(tab.id);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openContextMenu(tab, event.clientX, event.clientY);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openContextMenu(tab, rect.left + 20, rect.bottom + 4);
+          }
+        }}
+        className={cn(
+          "no-drag group relative flex h-8 touch-none items-center gap-2 rounded-t-lg border text-left text-xs outline-none transition-[background-color,border-color,box-shadow,opacity,transform] duration-150 ease-out focus-visible:ring-[3px] focus-visible:ring-ring/30",
+          tab.isPinned
+            ? "w-11 flex-none justify-center px-0"
+            : "min-w-24 max-w-56 flex-[1_1_11rem] px-3",
+          isActive
+            ? "z-10 border-border/90 border-b-card bg-card/95 text-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.06)]"
+            : "z-0 border-transparent bg-transparent text-muted-foreground hover:bg-accent/70 hover:text-foreground",
+          dragState?.tabId === tab.id && "cursor-grabbing",
+          dragState?.isDragging && !isDragPlaceholder && "duration-100",
+          isDragPlaceholder &&
+            "z-20 border-primary/24 bg-primary/5 text-foreground shadow-none",
+        )}
+      >
+        <span
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2",
+            tab.isPinned && "justify-center",
+            isDragPlaceholder && "invisible",
+          )}
+        >
+          <TabIcon tab={tab} />
+          <TabAudioIndicator tab={tab} />
+          {!tab.isPinned && <span className="min-w-0 flex-1 truncate">{tab.title}</span>}
+          {!tab.isPinned && (
+            <span
+              role="button"
+              tabIndex={0}
+              title="Close tab"
+              aria-label={`Close ${tab.title}`}
+              data-tab-action="close"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onCloseTab(tab.id);
               }}
               onKeyDown={(event) => {
-                if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  openContextMenu(tab, rect.left + 20, rect.bottom + 4);
+                  event.stopPropagation();
+                  onCloseTab(tab.id);
                 }
               }}
-              className={cn(
-                "no-drag group relative flex h-8 items-center gap-2 rounded-t-lg border text-left text-xs outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/30",
-                tab.isPinned
-                  ? "w-11 flex-none justify-center px-0"
-                  : "min-w-24 max-w-56 flex-1 px-3",
-                isActive
-                  ? "border-border/90 border-b-card bg-card/95 text-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.06)]"
-                  : "border-transparent bg-transparent text-muted-foreground hover:bg-accent/70 hover:text-foreground",
-                isDropTarget && "before:absolute before:-left-1 before:top-1 before:h-6 before:w-0.5 before:rounded-full before:bg-primary",
-                draggedTabId === tab.id && "opacity-55",
-              )}
+              className="grid size-5 place-items-center rounded-md text-muted-foreground opacity-65 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/30 group-hover:opacity-100"
             >
-              {tab.isLoading ? (
-                <LoaderCircle className="size-3.5 animate-spin text-primary" aria-hidden="true" />
-              ) : tab.favicon ? (
-                <img src={tab.favicon} alt="" className="size-4 rounded-sm" />
-              ) : (
-                <Globe2 className="size-3.5" aria-hidden="true" />
-              )}
-              {(tab.isMuted || tab.isAudible) && (
-                <span
-                  title={tab.isMuted ? "Muted tab" : "Audio playing"}
-                  data-testid={tab.isMuted ? "tab-muted-indicator" : "tab-audible-indicator"}
-                  className={cn(
-                    "grid size-4 shrink-0 place-items-center rounded-md text-muted-foreground",
-                    tab.isMuted && "text-primary",
-                    tab.isPinned && "absolute bottom-0.5 right-0.5 size-3 bg-background/90",
-                  )}
-                >
-                  {tab.isMuted ? (
-                    <VolumeX className="size-3" aria-hidden="true" />
-                  ) : (
-                    <Volume2 className="size-3" aria-hidden="true" />
-                  )}
-                </span>
-              )}
-              {!tab.isPinned && <span className="min-w-0 flex-1 truncate">{tab.title}</span>}
-              {!tab.isPinned && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  title="Close tab"
-                  aria-label={`Close ${tab.title}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onCloseTab(tab.id);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onCloseTab(tab.id);
-                    }
-                  }}
-                  className="grid size-5 place-items-center rounded-md text-muted-foreground opacity-65 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/30 group-hover:opacity-100"
-                >
-                  <X className="size-3.5" aria-hidden="true" />
-                </span>
-              )}
-            </button>
-          );
-        })}
+              <X className="size-3.5" aria-hidden="true" />
+            </span>
+          )}
+        </span>
+      </button>
+    );
+  };
+
+  const previewPinnedTabs = getPreviewTabs(pinnedTabs, true);
+  const previewNormalTabs = getPreviewTabs(normalTabs, false);
+  const dragPreviewLeft = dragState
+    ? Math.max(
+        8,
+        Math.min(window.innerWidth - dragState.width - 8, dragState.currentX - dragState.offsetX),
+      )
+    : 0;
+  const dragPreviewTop = dragState
+    ? Math.max(
+        8,
+        Math.min(window.innerHeight - dragState.height - 8, dragState.currentY - dragState.offsetY),
+      )
+    : 0;
+
+  return (
+    <div
+      ref={stripRef}
+      className="drag-region relative flex h-10 select-none items-end gap-2 border-b border-border/75 bg-background/90 px-3 backdrop-blur-xl"
+    >
+      <div className="flex min-w-0 flex-1 items-end gap-1 overflow-hidden">
+        {previewPinnedTabs.length > 0 && (
+          <div className="flex shrink-0 items-end gap-1" data-tab-group="pinned">
+            {previewPinnedTabs.map(renderTab)}
+          </div>
+        )}
+
+        {previewPinnedTabs.length > 0 && previewNormalTabs.length > 0 && (
+          <div className="mb-1 h-6 w-px shrink-0 bg-border/60" aria-hidden="true" />
+        )}
+
+        <div className="flex min-w-0 flex-1 items-end gap-1 overflow-hidden" data-tab-group="normal">
+          {previewNormalTabs.map(renderTab)}
+        </div>
 
         <Button
           type="button"
@@ -226,7 +567,7 @@ export function TabStrip({
           aria-label="New tab"
           data-testid="new-tab-button"
           onClick={onCreateTab}
-          className="no-drag mb-0.5"
+          className="no-drag mb-0.5 shrink-0"
         >
           <Plus aria-hidden="true" />
         </Button>
@@ -321,7 +662,145 @@ export function TabStrip({
           />
         </div>
       )}
+
+      {dragState?.isDragging && ghostTab && (
+        <div
+          className="no-drag pointer-events-none fixed left-0 top-0 z-[60]"
+          style={{
+            width: dragState.width,
+            height: dragState.height,
+            transform: `translate3d(${dragPreviewLeft}px, ${dragPreviewTop}px, 0)`,
+          }}
+          aria-hidden="true"
+        >
+          <div
+            className={cn(
+              "flex h-full items-center gap-2 rounded-t-lg border border-primary/55 bg-card/98 text-left text-xs text-foreground shadow-[0_18px_46px_hsl(225_45%_2%/0.44),inset_0_1px_0_hsl(0_0%_100%/0.08)] backdrop-blur-xl",
+              ghostTab.isPinned
+                ? "w-11 justify-center px-0"
+                : "w-full min-w-24 px-3",
+            )}
+          >
+            <TabIcon tab={ghostTab} />
+            <TabAudioIndicator tab={ghostTab} />
+            {!ghostTab.isPinned && <span className="min-w-0 flex-1 truncate">{ghostTab.title}</span>}
+          </div>
+        </div>
+      )}
+
+      {preview && previewTab && !dragState?.isDragging && (
+        <TabHoverPreview
+          tab={previewTab}
+          x={preview.x}
+          y={preview.y}
+          reducedMotion={reducedMotion}
+        />
+      )}
     </div>
+  );
+}
+
+function TabHoverPreview({
+  tab,
+  x,
+  y,
+  reducedMotion,
+}: {
+  tab: BrowserTab;
+  x: number;
+  y: number;
+  reducedMotion: boolean;
+}) {
+  return (
+    <section
+      data-testid="tab-hover-preview"
+      aria-hidden="true"
+      className={cn(
+        "no-drag pointer-events-none fixed z-[65] w-[300px] rounded-2xl border border-border/70 bg-popover/96 p-3 text-foreground shadow-2xl shadow-black/45 backdrop-blur-2xl",
+        !reducedMotion && "tab-preview-motion",
+      )}
+      style={{ left: x, top: y }}
+    >
+      <div className="flex items-start gap-3">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-border/58 bg-secondary/78 text-primary">
+          <TabIcon tab={tab} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-semibold">
+            {tab.title || "Untitled"}
+          </span>
+          <span className="mt-1 block truncate text-[11px] text-muted-foreground">
+            {tab.isNewTab ? "UltraX New Tab" : tab.url}
+          </span>
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {tab.isLoading && <PreviewBadge label="Loading" tone="primary" />}
+        {tab.isPinned && <PreviewBadge label="Pinned" />}
+        {tab.isMuted && <PreviewBadge label="Muted" tone="primary" />}
+        {!tab.isMuted && tab.isAudible && <PreviewBadge label="Audio" tone="primary" />}
+        {tab.error && <PreviewBadge label="Needs reload" tone="danger" />}
+      </div>
+    </section>
+  );
+}
+
+function PreviewBadge({
+  label,
+  tone,
+}: {
+  label: string;
+  tone?: "primary" | "danger";
+}) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        tone === "danger"
+          ? "border-destructive/42 bg-destructive/14 text-destructive"
+          : tone === "primary"
+            ? "border-primary/42 bg-primary/14 text-primary"
+            : "border-border/60 bg-background/50 text-muted-foreground",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function TabIcon({ tab }: { tab: BrowserTab }) {
+  if (tab.isLoading) {
+    return <LoaderCircle className="size-3.5 animate-spin text-primary" aria-hidden="true" />;
+  }
+
+  if (tab.favicon) {
+    return <img src={tab.favicon} alt="" className="size-4 rounded-sm" />;
+  }
+
+  return <Globe2 className="size-3.5" aria-hidden="true" />;
+}
+
+function TabAudioIndicator({ tab }: { tab: BrowserTab }) {
+  if (!tab.isMuted && !tab.isAudible) {
+    return null;
+  }
+
+  return (
+    <span
+      title={tab.isMuted ? "Muted tab" : "Audio playing"}
+      data-testid={tab.isMuted ? "tab-muted-indicator" : "tab-audible-indicator"}
+      className={cn(
+        "grid size-4 shrink-0 place-items-center rounded-md text-muted-foreground",
+        tab.isMuted && "text-primary",
+        tab.isPinned && "absolute bottom-0.5 right-0.5 size-3 bg-background/90",
+      )}
+    >
+      {tab.isMuted ? (
+        <VolumeX className="size-3" aria-hidden="true" />
+      ) : (
+        <Volume2 className="size-3" aria-hidden="true" />
+      )}
+    </span>
   );
 }
 
