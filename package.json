@@ -6,6 +6,10 @@
   "description": "UltraX custom Electron browser MVP with React, TypeScript, Tailwind CSS, and WebContentsView tabs.",
   "author": "UltraX",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/easycrashx-nex/UltraX.git"
+  },
   "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
@@ -18,7 +22,7 @@
     "dist": "npm run dist:win",
     "dist:win": "npm run build && electron-builder --win nsis portable --x64",
     "dist:win:arm64": "npm run build && electron-builder --win nsis portable --arm64",
-    "release:win": "npm run build && electron-builder --win nsis portable --x64 --publish always"
+    "release:win": "npm run dist:win"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
@@ -103,14 +107,16 @@
       "uninstallDisplayName": "UltraX"
     },
     "portable": {
-      "artifactName": "UltraX ${version} Portable ${arch}.${ext}"
+      "artifactName": "UltraX-${version}-Portable-${arch}.${ext}"
     },
     "publish": [
       {
         "provider": "github",
+        "owner": "easycrashx-nex",
+        "repo": "UltraX",
         "releaseType": "release"
       }
     ],
-    "artifactName": "UltraX Setup ${version} ${arch}.${ext}"
+    "artifactName": "UltraX-Setup-${version}-${arch}.${ext}"
   }
 }

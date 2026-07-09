@@ -3,7 +3,8 @@ import { autoUpdater, type ProgressInfo, type UpdateInfo } from "electron-update
 import { IPC } from "../../shared/ipc";
 import type { BrowserSettings, UpdateSettings, UpdateStatusSnapshot } from "../../shared/types";
 
-const DEFAULT_RELEASES_URL = "https://github.com/YOUR_USERNAME/ultrax-browser/releases";
+const ULTRAX_GITHUB_REPOSITORY = "easycrashx-nex/UltraX";
+const DEFAULT_RELEASES_URL = `https://github.com/${ULTRAX_GITHUB_REPOSITORY}/releases`;
 
 type UpdateSettingsPatch = Partial<BrowserSettings["updates"]>;
 
@@ -59,6 +60,10 @@ export class UpdateManager {
   }
 
   async checkForUpdates(): Promise<UpdateStatusSnapshot> {
+    if (this.isBusy()) {
+      return this.getStatus();
+    }
+
     const settings = this.getUpdateSettings();
     const checkedAt = Date.now();
     this.patchUpdateSettings({ lastCheckedAt: checkedAt });
@@ -99,6 +104,10 @@ export class UpdateManager {
   }
 
   async downloadUpdate(): Promise<UpdateStatusSnapshot> {
+    if (this.snapshot.status === "downloading" || this.snapshot.status === "installing") {
+      return this.getStatus();
+    }
+
     if (this.snapshot.status !== "available") {
       this.updateSnapshot({
         status: "error",
@@ -118,6 +127,7 @@ export class UpdateManager {
     });
 
     try {
+      this.logUpdateEvent("download-started");
       await this.updater.downloadUpdate();
     } catch (error) {
       this.updateSnapshot({
@@ -131,6 +141,10 @@ export class UpdateManager {
   }
 
   installUpdate(): UpdateStatusSnapshot {
+    if (this.snapshot.status === "installing") {
+      return this.getStatus();
+    }
+
     if (this.snapshot.status !== "downloaded") {
       this.updateSnapshot({
         status: "error",
@@ -146,6 +160,7 @@ export class UpdateManager {
       canDownload: false,
       canInstall: false,
     });
+    this.logUpdateEvent("install-and-restart");
     this.updater.quitAndInstall(false, true);
     return this.getStatus();
   }
@@ -169,6 +184,7 @@ export class UpdateManager {
 
   private registerUpdaterEvents(): void {
     this.updater.on("checking-for-update", () => {
+      this.logUpdateEvent("checking-for-update");
       this.updateSnapshot({
         status: "checking",
         error: undefined,
@@ -181,6 +197,7 @@ export class UpdateManager {
     });
 
     this.updater.on("update-available", (info: UpdateInfo) => {
+      this.logUpdateEvent("update-available", info.version);
       const settings = this.getUpdateSettings();
       if (settings.notifyWhenAvailable && Notification.isSupported()) {
         new Notification({
@@ -203,6 +220,7 @@ export class UpdateManager {
     });
 
     this.updater.on("update-not-available", (info: UpdateInfo) => {
+      this.logUpdateEvent("update-not-available", info.version);
       this.updateSnapshot({
         status: "not-available",
         latestVersion: info.version,
@@ -232,6 +250,7 @@ export class UpdateManager {
     });
 
     this.updater.on("update-downloaded", (info: UpdateInfo) => {
+      this.logUpdateEvent("update-downloaded", info.version);
       this.updateSnapshot({
         status: "downloaded",
         latestVersion: info.version,
@@ -247,6 +266,7 @@ export class UpdateManager {
     });
 
     this.updater.on("error", (error: Error) => {
+      this.logUpdateEvent("error", errorToMessage(error));
       this.updateSnapshot({
         status: "error",
         error: errorToMessage(error),
@@ -255,6 +275,19 @@ export class UpdateManager {
         canInstall: false,
       });
     });
+  }
+
+  private isBusy(): boolean {
+    return (
+      this.snapshot.status === "checking" ||
+      this.snapshot.status === "downloading" ||
+      this.snapshot.status === "installing"
+    );
+  }
+
+  private logUpdateEvent(event: string, detail?: string): void {
+    const suffix = detail ? `: ${detail}` : "";
+    console.info(`[updates] ${event}${suffix}`);
   }
 
   private updateSnapshot(patch: Partial<UpdateStatusSnapshot>): void {
@@ -277,7 +310,10 @@ function resolveReleasesUrl(): string {
     return explicitUrl;
   }
 
-  const repository = process.env.ULTRAX_GITHUB_REPOSITORY ?? process.env.GITHUB_REPOSITORY;
+  const repository =
+    process.env.ULTRAX_GITHUB_REPOSITORY ??
+    process.env.GITHUB_REPOSITORY ??
+    ULTRAX_GITHUB_REPOSITORY;
   if (repository && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
     return `https://github.com/${repository}/releases`;
   }

@@ -29,18 +29,13 @@ Do not commit `release/`.
 
 ## GitHub Repository Setup
 
-Create a GitHub repository manually, then run:
+The release repository is:
 
 ```powershell
-git init
-git add .
-git commit -m "Initial UltraX Browser release"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/ultrax-browser.git
-git push -u origin main
+git remote add origin https://github.com/easycrashx-nex/UltraX.git
 ```
 
-Replace `YOUR_USERNAME/ultrax-browser` with the real repository.
+Skip the command if `origin` already points to that URL.
 
 ## GitHub Actions Release
 
@@ -57,7 +52,10 @@ The workflow:
 - typechecks
 - builds
 - packages Windows NSIS and Portable builds
-- publishes artifacts to GitHub Releases through `electron-builder --publish always`
+- creates or updates the GitHub Release through GitHub CLI
+- verifies packaged `app-update.yml` points to `easycrashx-nex/UltraX`
+- verifies `latest.yml` exists and references the Setup installer
+- re-uploads installer, portable EXE, blockmap, and `latest.yml` with `--clobber`
 
 ## Required Secrets
 
@@ -72,11 +70,18 @@ Do not commit signing certificates or passwords.
 
 ## Auto-Updater Metadata
 
-`electron-builder` publishes update metadata for `electron-updater` when GitHub Releases are configured and `--publish always` is used.
+`electron-builder` generates update metadata for `electron-updater` when GitHub Releases are configured. The GitHub Actions workflow then uploads that metadata to the tagged GitHub Release.
+
+The Windows release must contain:
+
+- `UltraX-Setup-<version>-x64.exe`
+- `UltraX-Setup-<version>-x64.exe.blockmap`
+- `UltraX-<version>-Portable-x64.exe`
+- `latest.yml`
 
 ## Production Checklist
 
-- Replace placeholder repository links.
+- Confirm `app-update.yml` contains the GitHub provider, owner, and repo.
 - Protect `main`.
 - Require the build workflow.
 - Sign release tags.

@@ -51,7 +51,7 @@ UltraX supports two update paths:
 - In-app update checks through Settings -> Updates
 - Manual installer updates from GitHub Releases
 
-The in-app updater uses `electron-updater` and GitHub Releases once the repository is configured and release assets are published.
+The in-app updater uses `electron-updater` with GitHub Releases from `easycrashx-nex/UltraX` once release assets are published.
 
 Read:
 
@@ -60,15 +60,21 @@ Read:
 
 ## GitHub Setup
 
-After creating a GitHub repository, run:
+The public GitHub repository is:
+
+```txt
+https://github.com/easycrashx-nex/UltraX
+```
+
+If a fresh clone has no remote yet, run:
 
 ```powershell
-git remote add origin https://github.com/YOUR_USERNAME/ultrax-browser.git
+git remote add origin https://github.com/easycrashx-nex/UltraX.git
 git branch -M main
 git push -u origin main
 ```
 
-Then update release links/repository settings as described in [docs/releases.md](docs/releases.md).
+Release configuration is described in [docs/releases.md](docs/releases.md).
 
 ## Security
 

@@ -113,6 +113,21 @@ const api: UltraXApi = {
   downloadUpdate: () => invoke<UpdateStatusSnapshot>(IPC.downloadUpdate),
   installUpdate: () => invoke<UpdateStatusSnapshot>(IPC.installUpdate),
   openReleasesPage: () => invoke<void>(IPC.openReleasesPage),
+  updates: {
+    getCurrentVersion: async () => {
+      const info = await invoke<RuntimeInfo>(IPC.getRuntimeInfo);
+      return info.appVersion;
+    },
+    getStatus: () => invoke<UpdateStatusSnapshot>(IPC.getUpdateStatus),
+    checkForUpdates: () => invoke<UpdateStatusSnapshot>(IPC.checkForUpdates),
+    downloadUpdate: () => invoke<UpdateStatusSnapshot>(IPC.downloadUpdate),
+    installAndRestart: () => invoke<UpdateStatusSnapshot>(IPC.installUpdate),
+    getReleaseNotes: async () => {
+      const status = await invoke<UpdateStatusSnapshot>(IPC.getUpdateStatus);
+      return status.releaseNotes;
+    },
+    openReleasesPage: () => invoke<void>(IPC.openReleasesPage),
+  },
 
   openDownload: (downloadId: string) => invoke<void>(IPC.openDownload, downloadId),
   revealDownload: (downloadId: string) => invoke<void>(IPC.revealDownload, downloadId),

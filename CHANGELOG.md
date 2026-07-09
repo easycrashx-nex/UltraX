@@ -10,12 +10,16 @@
 - Added persisted update preferences for auto-check, auto-download, notification preference, channel, and last checked time.
 - Added GitHub Actions workflows for build validation and tagged release publishing.
 - Added GitHub-ready project files: README, license, contributing guide, security policy, issue templates, PR template, release docs, and updating docs.
+- Added explicit GitHub Releases provider metadata for `easycrashx-nex/UltraX` in packaged builds.
+- Added a safe `window.ultraX.updates` preload API alias for update-specific actions.
 
 ### Improved
 
 - Updated package and visible current-version metadata to UltraX 1.0.6.
 - Kept manual installer updates as a supported path alongside in-app updates.
 - Added release security notes for unsigned development builds and future Windows code signing.
+- Quick Settings now opens Settings > Updates when an update is available or downloaded.
+- The release workflow verifies `app-update.yml`, `latest.yml`, and required Windows update assets before publishing.
 
 ### Security
 

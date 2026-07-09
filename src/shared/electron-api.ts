@@ -52,6 +52,15 @@ export type UltraXApi = {
   downloadUpdate: () => Promise<UpdateStatusSnapshot>;
   installUpdate: () => Promise<UpdateStatusSnapshot>;
   openReleasesPage: () => Promise<void>;
+  updates: {
+    getCurrentVersion: () => Promise<string>;
+    getStatus: () => Promise<UpdateStatusSnapshot>;
+    checkForUpdates: () => Promise<UpdateStatusSnapshot>;
+    downloadUpdate: () => Promise<UpdateStatusSnapshot>;
+    installAndRestart: () => Promise<UpdateStatusSnapshot>;
+    getReleaseNotes: () => Promise<string | undefined>;
+    openReleasesPage: () => Promise<void>;
+  };
 
   openDownload: (downloadId: string) => Promise<void>;
   revealDownload: (downloadId: string) => Promise<void>;

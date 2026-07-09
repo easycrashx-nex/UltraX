@@ -29,12 +29,69 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Build and publish release
+      - name: Build Windows release package
         run: npm run release:win
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Verify updater metadata
+        shell: pwsh
+        run: |
+          $appUpdate = "release/win-unpacked/resources/app-update.yml"
+          if (!(Test-Path $appUpdate)) {
+            throw "Missing app-update.yml in packaged app resources."
+          }
+
+          $appUpdateText = Get-Content $appUpdate -Raw
+          foreach ($expected in @("provider: github", "owner: easycrashx-nex", "repo: UltraX")) {
+            if (!$appUpdateText.Contains($expected)) {
+              throw "app-update.yml does not contain '$expected'."
+            }
+          }
+
+          if (!(Test-Path "release/latest.yml")) {
+            throw "Missing latest.yml updater metadata."
+          }
+
+          $latestText = Get-Content "release/latest.yml" -Raw
+          if ($latestText -notmatch "UltraX-Setup-.+-x64\.exe") {
+            throw "latest.yml does not point to the Windows Setup installer."
+          }
+
+      - name: Create or update GitHub release
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $notes = "UltraX Browser v$version`n`nSee CHANGELOG.md for release notes and update details."
+
+          gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --title $version --notes $notes
+          } else {
+            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $version --notes $notes
+          }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure GitHub release assets
+        shell: pwsh
+        run: |
+          $assets = @()
+          $assets += Get-ChildItem release -Filter "UltraX-Setup-*-x64.exe"
+          $assets += Get-ChildItem release -Filter "UltraX-Setup-*-x64.exe.blockmap"
+          $assets += Get-ChildItem release -Filter "UltraX-*-Portable-x64.exe"
+          $assets += Get-Item release/latest.yml
+
+          if ($assets.Count -lt 4) {
+            throw "Expected installer, portable, blockmap, and latest.yml release assets."
+          }
+
+          foreach ($asset in $assets) {
+            gh release upload $env:GITHUB_REF_NAME $asset.FullName --clobber
+          }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4

@@ -2116,7 +2116,7 @@ function CategoryContent({
         updateAvailable: false,
         lastCheckedAt: settings.updates.lastCheckedAt,
         source: "github-releases",
-        releasesUrl: "https://github.com/YOUR_USERNAME/ultrax-browser/releases",
+        releasesUrl: "https://github.com/easycrashx-nex/UltraX/releases",
         canCheck: true,
         canDownload: false,
         canInstall: false,
@@ -2182,10 +2182,14 @@ function CategoryContent({
             <InfoRow label="Last checked" detail={formatTimestamp(update.lastCheckedAt)} />
             <InfoRow label="Update source" detail={update.releasesUrl} />
             {update.progress && (
-              <InfoRow
-                label="Download progress"
-                detail={`${Math.round(update.progress.percent)}% - ${formatBytes(update.progress.transferred)} of ${formatBytes(update.progress.total)}`}
-              />
+              <>
+                <InfoRow
+                  label="Download progress"
+                  detail={`${Math.round(update.progress.percent)}% - ${formatBytes(update.progress.transferred)} of ${formatBytes(update.progress.total)}`}
+                />
+                <InfoRow label="Download speed" detail={`${formatBytes(update.progress.bytesPerSecond)}/s`} />
+                <InfoRow label="Download size" detail={formatBytes(update.progress.total)} />
+              </>
             )}
             {update.error && <InfoRow label="Update error" detail={update.error} />}
             <InlineActions>
@@ -2198,7 +2202,7 @@ function CategoryContent({
                 className="rounded-xl"
               >
                 <RefreshCw aria-hidden="true" />
-                Check
+                Check for Updates
               </Button>
               <Button
                 type="button"
@@ -2209,7 +2213,7 @@ function CategoryContent({
                 className="rounded-xl"
               >
                 <Download aria-hidden="true" />
-                Download
+                Download Update
               </Button>
               <Button
                 type="button"
@@ -2220,7 +2224,7 @@ function CategoryContent({
                 className="rounded-xl"
               >
                 <RefreshCw aria-hidden="true" />
-                Restart
+                Install and Restart
               </Button>
               <Button
                 type="button"
@@ -2255,7 +2259,7 @@ function CategoryContent({
 
           <StatusCard
             title="Manual installer updates still work"
-            detail="You can always download the latest Setup EXE from GitHub Releases and run it manually. In-app updates use the same trusted release feed once the GitHub repository is configured."
+            detail="You can always download the latest Setup EXE from GitHub Releases and run it manually. In-app updates use the same trusted release feed."
             icon={<Download aria-hidden="true" />}
           />
 

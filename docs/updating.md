@@ -27,8 +27,20 @@ The portable EXE can also be downloaded and run directly.
 
 ## Current Release Source
 
-The update architecture is prepared for GitHub Releases. Before public release, replace placeholder repository values with the actual GitHub repository and publish a tagged release.
+UltraX uses GitHub Releases from:
+
+```txt
+https://github.com/easycrashx-nex/UltraX/releases
+```
+
+Packaged Windows builds include `app-update.yml` pointing at `easycrashx-nex/UltraX`. The release feed must include `latest.yml`, the Setup EXE, and the Setup blockmap for in-app updates to work.
 
 ## Development Limitation
 
 In-app update checks require a packaged build with release metadata. Running from `npm run dev` or `electron .` will report that update checks require a packaged UltraX build.
+
+## Testing the Real Update Flow
+
+To test production updates, install an older packaged build such as UltraX `1.0.5`, publish a newer release such as `v1.0.6`, then open Settings > Updates in the older app and use Check for Updates, Download Update, and Install and Restart.
+
+If the installed app is already on the same version as the newest GitHub Release, the updater should correctly report that UltraX is up to date.

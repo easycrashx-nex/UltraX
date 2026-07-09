@@ -50,7 +50,7 @@ const DEFAULT_PERMISSION_POLICY: Record<SitePermissionKey, PermissionPolicy> = {
 };
 
 const DEFAULT_UPDATE_SETTINGS: BrowserSettings["updates"] = {
-  autoCheck: false,
+  autoCheck: true,
   autoDownload: false,
   notifyWhenAvailable: true,
   channel: "stable",

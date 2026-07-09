@@ -187,11 +187,11 @@ export function QuickSettings({
             onClick={onOpenDownloads}
           />
           <QuickActionRow
-          icon={<Info aria-hidden="true" />}
-          label="About"
-          detail={getAboutDetail(runtimeInfo, updateStatus)}
-          onClick={() => onOpenSettings("about")}
-        />
+            icon={<Info aria-hidden="true" />}
+            label={hasUpdateAttention(updateStatus) ? "Update Available" : "About"}
+            detail={getAboutDetail(runtimeInfo, updateStatus)}
+            onClick={() => onOpenSettings(hasUpdateAttention(updateStatus) ? "updates" : "about")}
+          />
         </div>
 
         <QuickExtensionsSection
@@ -229,6 +229,10 @@ function getAboutDetail(
   }
 
   return runtimeInfo ? `UltraX ${runtimeInfo.appVersion}` : "Version info";
+}
+
+function hasUpdateAttention(updateStatus: UpdateStatusSnapshot | null): boolean {
+  return updateStatus?.status === "available" || updateStatus?.status === "downloaded";
 }
 
 function QuickExtensionsSection({
