@@ -1,12 +1,19 @@
 export const IPC = {
   browserState: "browser:state",
   focusAddressBar: "browser:focus-address-bar",
+  requestCloseConfirmation: "window:request-close-confirmation",
 
   getState: "browser:get-state",
   setViewInsets: "browser:set-view-insets",
 
   createTab: "tabs:create",
   closeTab: "tabs:close",
+  duplicateTab: "tabs:duplicate",
+  pinTab: "tabs:pin",
+  reorderTab: "tabs:reorder",
+  closeOtherTabs: "tabs:close-others",
+  closeTabsToRight: "tabs:close-to-right",
+  moveTabToNewWindow: "tabs:move-to-new-window",
   switchTab: "tabs:switch",
   navigate: "tabs:navigate",
   goHome: "tabs:home",
@@ -46,6 +53,9 @@ export const IPC = {
   openDownloadsFolder: "downloads:open-folder",
   clearDownloads: "downloads:clear",
 
+  chooseNewTabCustomImage: "appearance:choose-new-tab-custom-image",
+  removeNewTabCustomImage: "appearance:remove-new-tab-custom-image",
+
   clearBookmarks: "bookmarks:clear",
 
   loadUnpackedExtension: "extensions:load-unpacked",
@@ -64,4 +74,5 @@ export const IPC = {
   minimizeWindow: "window:minimize",
   toggleMaximizeWindow: "window:toggle-maximize",
   closeWindow: "window:close",
+  closeWindowWithBehavior: "window:close-with-behavior",
 } as const;

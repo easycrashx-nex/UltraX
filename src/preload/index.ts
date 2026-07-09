@@ -18,10 +18,17 @@ import type {
 const IPC = {
   browserState: "browser:state",
   focusAddressBar: "browser:focus-address-bar",
+  requestCloseConfirmation: "window:request-close-confirmation",
   getState: "browser:get-state",
   setViewInsets: "browser:set-view-insets",
   createTab: "tabs:create",
   closeTab: "tabs:close",
+  duplicateTab: "tabs:duplicate",
+  pinTab: "tabs:pin",
+  reorderTab: "tabs:reorder",
+  closeOtherTabs: "tabs:close-others",
+  closeTabsToRight: "tabs:close-to-right",
+  moveTabToNewWindow: "tabs:move-to-new-window",
   switchTab: "tabs:switch",
   navigate: "tabs:navigate",
   goHome: "tabs:home",
@@ -55,6 +62,8 @@ const IPC = {
   chooseDownloadFolder: "downloads:choose-folder",
   openDownloadsFolder: "downloads:open-folder",
   clearDownloads: "downloads:clear",
+  chooseNewTabCustomImage: "appearance:choose-new-tab-custom-image",
+  removeNewTabCustomImage: "appearance:remove-new-tab-custom-image",
   clearBookmarks: "bookmarks:clear",
   loadUnpackedExtension: "extensions:load-unpacked",
   validateUnpackedExtension: "extensions:validate-unpacked",
@@ -71,6 +80,7 @@ const IPC = {
   minimizeWindow: "window:minimize",
   toggleMaximizeWindow: "window:toggle-maximize",
   closeWindow: "window:close",
+  closeWindowWithBehavior: "window:close-with-behavior",
 } as const;
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
@@ -82,6 +92,13 @@ const api: UltraXApi = {
 
   createTab: () => invoke<void>(IPC.createTab),
   closeTab: (tabId: string) => invoke<void>(IPC.closeTab, tabId),
+  duplicateTab: (tabId: string) => invoke<void>(IPC.duplicateTab, tabId),
+  pinTab: (tabId: string, pinned: boolean) => invoke<void>(IPC.pinTab, tabId, pinned),
+  reorderTab: (tabId: string, targetTabId: string) =>
+    invoke<void>(IPC.reorderTab, tabId, targetTabId),
+  closeOtherTabs: (tabId: string) => invoke<void>(IPC.closeOtherTabs, tabId),
+  closeTabsToRight: (tabId: string) => invoke<void>(IPC.closeTabsToRight, tabId),
+  moveTabToNewWindow: (tabId: string) => invoke<void>(IPC.moveTabToNewWindow, tabId),
   switchTab: (tabId: string) => invoke<void>(IPC.switchTab, tabId),
   navigate: (input: string) => invoke<void>(IPC.navigate, input),
   goHome: () => invoke<void>(IPC.goHome),
@@ -134,6 +151,8 @@ const api: UltraXApi = {
   chooseDownloadFolder: () => invoke<string | null>(IPC.chooseDownloadFolder),
   openDownloadsFolder: () => invoke<void>(IPC.openDownloadsFolder),
   clearDownloads: () => invoke<void>(IPC.clearDownloads),
+  chooseNewTabCustomImage: () => invoke<string | null>(IPC.chooseNewTabCustomImage),
+  removeNewTabCustomImage: () => invoke<void>(IPC.removeNewTabCustomImage),
 
   clearBookmarks: () => invoke<void>(IPC.clearBookmarks),
 
@@ -163,6 +182,8 @@ const api: UltraXApi = {
   minimizeWindow: () => invoke<void>(IPC.minimizeWindow),
   toggleMaximizeWindow: () => invoke<void>(IPC.toggleMaximizeWindow),
   closeWindow: () => invoke<void>(IPC.closeWindow),
+  closeWindowWithBehavior: (discardSession: boolean) =>
+    invoke<void>(IPC.closeWindowWithBehavior, discardSession),
 
   onStateChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: BrowserState) => {
@@ -178,6 +199,13 @@ const api: UltraXApi = {
 
     ipcRenderer.on(IPC.focusAddressBar, listener);
     return () => ipcRenderer.removeListener(IPC.focusAddressBar, listener);
+  },
+
+  onCloseRequested: (callback) => {
+    const listener = () => callback();
+
+    ipcRenderer.on(IPC.requestCloseConfirmation, listener);
+    return () => ipcRenderer.removeListener(IPC.requestCloseConfirmation, listener);
   },
 
   onUpdateStatusChanged: (callback) => {

@@ -1,13 +1,22 @@
 import type {
   AccentColor,
+  AnimationLevel,
+  BlurIntensity,
   BrowserSettings,
+  CloseBehavior,
+  CornerRadius,
   DownloadRetention,
   ExtensionStoreItem,
   ExtensionValidationResult,
   HistoryRetention,
   InstalledExtension,
+  NewTabBackground,
+  PanelTransparency,
   RuntimeInfo,
   SearchEngine,
+  ShaderIntensity,
+  ShaderPreset,
+  ShaderSpeed,
   StartupBehavior,
   ThemeMode,
   ToolbarDensity,
@@ -71,6 +80,8 @@ type SettingsPageProps = {
   onClearBookmarks: () => void;
   onChooseDownloadFolder: () => void;
   onOpenDownloadsFolder: () => void;
+  onChooseNewTabCustomImage: () => Promise<string | null>;
+  onRemoveNewTabCustomImage: () => Promise<void>;
   onResetSettings: () => void;
   onOpenShellDevTools: () => void;
   onRelaunchApp: () => void;
@@ -255,6 +266,25 @@ const defaultPerformanceSettings: Partial<BrowserSettings> = {
   reduceDataUsage: false,
 };
 
+const defaultAppearanceSettings: Partial<BrowserSettings> = {
+  theme: "dark",
+  glassMode: true,
+  accentColor: "blue",
+  toolbarDensity: "comfortable",
+  cornerRadius: "rounded",
+  blurIntensity: "balanced",
+  panelTransparency: "balanced",
+  animationLevel: "balanced",
+  shaderEnabled: true,
+  newTabBackground: "ultrax-wave",
+  newTabSolidColor: "#050608",
+  newTabCustomImagePath: "",
+  shaderPreset: "ultrax-wave",
+  shaderIntensity: "balanced",
+  shaderSpeed: "normal",
+  reducedMotion: false,
+};
+
 function performanceModePatch(
   performanceMode: BrowserSettings["performanceMode"],
 ): Partial<BrowserSettings> {
@@ -366,6 +396,8 @@ export function SettingsPage({
   onClearBookmarks,
   onChooseDownloadFolder,
   onOpenDownloadsFolder,
+  onChooseNewTabCustomImage,
+  onRemoveNewTabCustomImage,
   onResetSettings,
   onOpenShellDevTools,
   onRelaunchApp,
@@ -454,7 +486,7 @@ export function SettingsPage({
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold">UltraX Settings</h1>
             <p className="truncate text-xs text-muted-foreground">
-              v1.0.7 premium desktop controls for browsing, privacy, updates, extensions, and release diagnostics.
+              v1.0.8 premium desktop controls for browsing, privacy, updates, extensions, and release diagnostics.
             </p>
           </div>
         </div>
@@ -564,6 +596,8 @@ export function SettingsPage({
               onClearBookmarks={onClearBookmarks}
               onChooseDownloadFolder={onChooseDownloadFolder}
               onOpenDownloadsFolder={onOpenDownloadsFolder}
+              onChooseNewTabCustomImage={onChooseNewTabCustomImage}
+              onRemoveNewTabCustomImage={onRemoveNewTabCustomImage}
               onResetSettings={onResetSettings}
               onOpenShellDevTools={onOpenShellDevTools}
               onRelaunchApp={onRelaunchApp}
@@ -617,6 +651,8 @@ function CategoryContent({
   onClearBookmarks,
   onChooseDownloadFolder,
   onOpenDownloadsFolder,
+  onChooseNewTabCustomImage,
+  onRemoveNewTabCustomImage,
   onResetSettings,
   onOpenShellDevTools,
   onRelaunchApp,
@@ -671,7 +707,7 @@ function CategoryContent({
     generatedAt: new Date().toISOString(),
     app: {
       name: runtimeInfo?.appName ?? "UltraX",
-      version: runtimeInfo?.appVersion ?? "1.0.7",
+      version: runtimeInfo?.appVersion ?? "1.0.8",
       electron: runtimeInfo?.electronVersion ?? "Unknown",
       chromium: runtimeInfo?.chromiumVersion ?? "Unknown",
       node: runtimeInfo?.nodeVersion ?? "Unknown",
@@ -891,6 +927,23 @@ function CategoryContent({
                 ["specific-pages", "Pages"],
               ]}
             />
+            <SelectRow
+              label="When closing UltraX"
+              detail="Choose whether tabs are restored, discarded, or confirmed before close."
+              value={settings.closeBehavior}
+              onChange={(value) =>
+                onUpdateSettings({
+                  closeBehavior: value as CloseBehavior,
+                  confirmBeforeClosingMultipleTabs:
+                    value === "ask-before-closing-multiple-tabs",
+                })
+              }
+              options={[
+                ["close-and-restore-session", "Close and restore next time"],
+                ["ask-before-closing-multiple-tabs", "Ask before closing multiple tabs"],
+                ["close-and-discard-session", "Close and discard session"],
+              ]}
+            />
             <ActionRow
               label="Open shell developer tools"
               detail="Inspect UltraX chrome and diagnostics."
@@ -901,7 +954,7 @@ function CategoryContent({
           </SettingSection>
           <StatusCard
             title="Release status"
-            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.7"} is running in ${
+            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.8"} is running in ${
               runtimeInfo?.buildType ?? "development"
             } mode.`}
             icon={<Sparkles aria-hidden="true" />}
@@ -911,40 +964,199 @@ function CategoryContent({
 
     case "appearance":
       return (
-        <SettingSection title="Appearance" detail="UltraX identity with a calmer macOS-inspired finish.">
-          <SwitchRow
-            label="Glass surfaces"
-            detail="Use translucent materials, soft blur, and gentle highlights."
-            checked={settings.glassMode}
-            onChange={(checked) => onUpdateSettings({ glassMode: checked })}
-          />
-          <ColorRow
-            value={settings.accentColor}
-            onChange={(accentColor) => onUpdateSettings({ accentColor })}
-          />
-          <SelectRow
-            label="Toolbar density"
-            detail="Adjust chrome spacing without shrinking touch targets."
-            value={settings.toolbarDensity}
-            onChange={(value) => onUpdateSettings({ toolbarDensity: value as ToolbarDensity })}
-            options={[
-              ["comfortable", "Comfortable"],
-              ["compact", "Compact"],
-            ]}
-          />
-          <SwitchRow
-            label="New Tab shader animation"
-            detail="Render the UltraX wave on New Tab."
-            checked={settings.shaderEnabled}
-            onChange={(checked) => onUpdateSettings({ shaderEnabled: checked })}
-          />
-          <SwitchRow
-            label="Reduce motion"
-            detail="Tone down animated transitions across UltraX."
-            checked={settings.reducedMotion}
-            onChange={(checked) => onUpdateSettings({ reducedMotion: checked })}
-          />
-        </SettingSection>
+        <>
+          <AppearancePreview settings={settings} />
+          <SettingSection title="Theme" detail="UltraX identity with a calmer macOS-inspired finish.">
+            <SegmentedRow
+              label="Theme"
+              detail="Choose the base shell appearance."
+              value={settings.theme}
+              onChange={(value) => onUpdateSettings({ theme: value as ThemeMode })}
+              options={[
+                ["dark", "Dark"],
+                ["light", "Light"],
+                ["system", "System"],
+              ]}
+            />
+            <ColorRow
+              value={settings.accentColor}
+              onChange={(accentColor) => onUpdateSettings({ accentColor })}
+            />
+            <SelectRow
+              label="Interface density"
+              detail="Adjust chrome, settings, and New Tab spacing."
+              value={settings.toolbarDensity}
+              onChange={(value) => onUpdateSettings({ toolbarDensity: value as ToolbarDensity })}
+              options={[
+                ["compact", "Compact"],
+                ["comfortable", "Comfortable"],
+                ["spacious", "Spacious"],
+              ]}
+            />
+            <SelectRow
+              label="Corner radius"
+              detail="Tune the shape of major UltraX surfaces."
+              value={settings.cornerRadius}
+              onChange={(value) => onUpdateSettings({ cornerRadius: value as CornerRadius })}
+              options={[
+                ["subtle", "Subtle"],
+                ["rounded", "Rounded"],
+                ["ultra-rounded", "Ultra Rounded"],
+              ]}
+            />
+          </SettingSection>
+
+          <SettingSection title="Glass & Motion" detail="Control material depth, blur, and animation energy.">
+            <SwitchRow
+              label="Glass effects"
+              detail="Use translucent materials, soft blur, and gentle highlights."
+              checked={settings.glassMode}
+              onChange={(checked) => onUpdateSettings({ glassMode: checked })}
+            />
+            <SelectRow
+              label="Blur intensity"
+              detail="Controls backdrop blur on glass panels."
+              value={settings.blurIntensity}
+              onChange={(value) => onUpdateSettings({ blurIntensity: value as BlurIntensity })}
+              options={[
+                ["low", "Low"],
+                ["balanced", "Balanced"],
+                ["high", "High"],
+              ]}
+            />
+            <SelectRow
+              label="Panel transparency"
+              detail="Controls how much background shows through panels."
+              value={settings.panelTransparency}
+              onChange={(value) =>
+                onUpdateSettings({ panelTransparency: value as PanelTransparency })
+              }
+              options={[
+                ["low", "Low"],
+                ["balanced", "Balanced"],
+                ["high", "High"],
+              ]}
+            />
+            <SelectRow
+              label="Animation level"
+              detail="Reduced motion overrides this setting."
+              value={settings.animationLevel}
+              onChange={(value) => onUpdateSettings({ animationLevel: value as AnimationLevel })}
+              options={[
+                ["minimal", "Minimal"],
+                ["balanced", "Balanced"],
+                ["expressive", "Expressive"],
+              ]}
+            />
+            <SwitchRow
+              label="Reduce motion"
+              detail="Tone down animated transitions across UltraX."
+              checked={settings.reducedMotion}
+              onChange={(checked) => onUpdateSettings({ reducedMotion: checked })}
+            />
+          </SettingSection>
+
+          <SettingSection title="New Tab Background" detail="Choose the visual system behind the New Tab page.">
+            <SelectRow
+              label="Background"
+              detail="Applies immediately to New Tab."
+              value={settings.newTabBackground}
+              onChange={(value) => onUpdateSettings({ newTabBackground: value as NewTabBackground })}
+              options={[
+                ["ultrax-wave", "UltraX Wave"],
+                ["aurora", "Aurora"],
+                ["gradient-mesh", "Gradient Mesh"],
+                ["minimal-dark", "Minimal Dark"],
+                ["solid-color", "Solid Color"],
+                ...(settings.newTabCustomImagePath
+                  ? ([["custom-image", "Custom Image"]] as Array<[string, string]>)
+                  : []),
+              ]}
+            />
+            <ColorInputRow
+              label="Solid color"
+              detail="Used when New Tab background is Solid Color."
+              value={settings.newTabSolidColor}
+              onChange={(newTabSolidColor) => onUpdateSettings({ newTabSolidColor })}
+            />
+            <ActionRow
+              label="Custom image"
+              detail={
+                settings.newTabCustomImagePath
+                  ? "Custom image is stored in UltraX user data."
+                  : "Choose a local PNG, JPG, WEBP, or GIF."
+              }
+              actionLabel="Choose"
+              icon={<Palette aria-hidden="true" />}
+              onAction={() => {
+                void onChooseNewTabCustomImage();
+              }}
+            />
+            {settings.newTabCustomImagePath && (
+              <ActionRow
+                label="Remove custom image"
+                detail="Return to the default UltraX Wave background."
+                actionLabel="Remove"
+                icon={<Trash2 aria-hidden="true" />}
+                danger
+                onAction={() => {
+                  void onRemoveNewTabCustomImage();
+                }}
+              />
+            )}
+          </SettingSection>
+
+          <SettingSection title="Shader Presets" detail="Fine tune the animated UltraX backgrounds.">
+            <SwitchRow
+              label="New Tab shader animation"
+              detail="Render animated backgrounds where supported."
+              checked={settings.shaderEnabled}
+              onChange={(checked) => onUpdateSettings({ shaderEnabled: checked })}
+            />
+            <SelectRow
+              label="Shader preset"
+              detail="Changes color direction for shader-backed backgrounds."
+              value={settings.shaderPreset}
+              onChange={(value) => onUpdateSettings({ shaderPreset: value as ShaderPreset })}
+              options={[
+                ["ultrax-wave", "UltraX Wave"],
+                ["blue-nebula", "Blue Nebula"],
+                ["purple-flow", "Purple Flow"],
+                ["aurora-lines", "Aurora Lines"],
+                ["calm-grid", "Calm Grid"],
+              ]}
+            />
+            <SelectRow
+              label="Shader intensity"
+              detail="Controls visual strength without changing performance mode."
+              value={settings.shaderIntensity}
+              onChange={(value) => onUpdateSettings({ shaderIntensity: value as ShaderIntensity })}
+              options={[
+                ["low", "Low"],
+                ["balanced", "Balanced"],
+                ["high", "High"],
+              ]}
+            />
+            <SelectRow
+              label="Shader speed"
+              detail="Reduced motion and performance settings can still limit animation."
+              value={settings.shaderSpeed}
+              onChange={(value) => onUpdateSettings({ shaderSpeed: value as ShaderSpeed })}
+              options={[
+                ["slow", "Slow"],
+                ["normal", "Normal"],
+                ["fast", "Fast"],
+              ]}
+            />
+            <ActionRow
+              label="Reset Appearance to Default"
+              detail="Restores the UltraX default look without changing privacy or tabs."
+              actionLabel="Reset"
+              icon={<RotateCcw aria-hidden="true" />}
+              onAction={() => onUpdateSettings(defaultAppearanceSettings)}
+            />
+          </SettingSection>
+        </>
       );
 
     case "browser":
@@ -995,13 +1207,26 @@ function CategoryContent({
             checked={settings.openTabsNextToCurrent}
             onChange={(checked) => onUpdateSettings({ openTabsNextToCurrent: checked })}
           />
-          <SwitchRow
-            label="Confirm before closing multiple tabs"
-            detail="Ask before closing UltraX with multiple tabs."
-            checked={settings.confirmBeforeClosingMultipleTabs}
-            onChange={(checked) => onUpdateSettings({ confirmBeforeClosingMultipleTabs: checked })}
+          <SelectRow
+            label="When closing UltraX"
+            detail="Restore, confirm, or discard the current session."
+            value={settings.closeBehavior}
+            onChange={(value) =>
+              onUpdateSettings({
+                closeBehavior: value as CloseBehavior,
+                confirmBeforeClosingMultipleTabs:
+                  value === "ask-before-closing-multiple-tabs",
+              })
+            }
+            options={[
+              ["close-and-restore-session", "Close and restore next time"],
+              ["ask-before-closing-multiple-tabs", "Ask before closing multiple tabs"],
+              ["close-and-discard-session", "Close and discard session"],
+            ]}
           />
-          <ComingSoonRow label="Pinned tabs" detail="A pinned tab model is planned for v1.1." />
+          <InfoRow label="Pinned tabs" detail="Pin and unpin tabs from the tab context menu." />
+          <InfoRow label="Tab reordering" detail="Drag tabs within their pinned or normal group." />
+          <InfoRow label="Tab context menu" detail="Right-click a tab for duplicate, close, pin, and session actions." />
           <ComingSoonRow label="Tab hover preview" detail="Preview cards need compositor-aware capture." />
         </SettingSection>
       );
@@ -1038,6 +1263,23 @@ function CategoryContent({
                   .slice(0, 12),
               })
             }
+          />
+          <SelectRow
+            label="When closing UltraX"
+            detail="Controls whether the current session is preserved."
+            value={settings.closeBehavior}
+            onChange={(value) =>
+              onUpdateSettings({
+                closeBehavior: value as CloseBehavior,
+                confirmBeforeClosingMultipleTabs:
+                  value === "ask-before-closing-multiple-tabs",
+              })
+            }
+            options={[
+              ["close-and-restore-session", "Close and restore next time"],
+              ["ask-before-closing-multiple-tabs", "Ask before closing multiple tabs"],
+              ["close-and-discard-session", "Close and discard session"],
+            ]}
           />
         </SettingSection>
       );
@@ -1422,7 +1664,7 @@ function CategoryContent({
             <ComingSoonRow label="Add profile" detail="Separate profile storage is planned for v1.1." />
             <ComingSoonRow label="Guest mode" detail="Requires a separate temporary session partition." />
           </SettingSection>
-          <EmptyFeature title="Profiles are coming next" detail="v1.0.7 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
+          <EmptyFeature title="Profiles are coming next" detail="v1.0.8 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
         </>
       );
 
@@ -1448,7 +1690,7 @@ function CategoryContent({
             <InfoRow label="What extensions are" detail="Browser-level add-ons with scoped permissions for tabs, sidebar, and local browser features." />
             <ComingSoonRow label="Plugin marketplace" detail="Requires signed native module loading and a separate trust boundary." />
           </SettingSection>
-          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.0.7 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
+          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.0.8 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
         </>
       );
 
@@ -2048,7 +2290,7 @@ function CategoryContent({
           )}
 
           <SettingSection title="Diagnostics" detail="Local performance information safe to copy or export.">
-            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.7"}`} />
+            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.8"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2086,14 +2328,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset performance settings"
-              detail="Restores only this Performance page to v1.0.7 defaults."
+              detail="Restores only this Performance page to v1.0.8 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset performance settings?",
-                  "Only the Performance page settings will return to the v1.0.7 defaults.",
+                  "Only the Performance page settings will return to the v1.0.8 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultPerformanceSettings),
                 )
@@ -2189,7 +2431,7 @@ function CategoryContent({
             onAction={() =>
               requestConfirm(
                 "Reset all UltraX settings?",
-                "This restores preferences to the v1.0.7 defaults.",
+                "This restores preferences to the v1.0.8 defaults.",
                 "Reset",
                 onResetSettings,
               )
@@ -2202,7 +2444,7 @@ function CategoryContent({
     case "updates": {
       const update = updateStatus ?? {
         status: "idle",
-        currentVersion: runtimeInfo?.appVersion ?? "1.0.7",
+        currentVersion: runtimeInfo?.appVersion ?? "1.0.8",
         channel: settings.updates.channel,
         updateAvailable: false,
         lastCheckedAt: settings.updates.lastCheckedAt,
@@ -2367,7 +2609,7 @@ function CategoryContent({
       return (
         <>
           <SettingSection title="About UltraX" detail="Build and engine information.">
-            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.7"}`} />
+            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.0.8"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2382,7 +2624,7 @@ function CategoryContent({
             <InfoRow label="License" detail="Project-local MVP placeholder." />
           </SettingSection>
           <StatusCard
-            title="UltraX Browser v1.0.7"
+            title="UltraX Browser v1.0.8"
             detail="Search suggestions, release trust hygiene, GitHub Releases updates, native Extensions, and preserved Chromium browser security."
             icon={<Sparkles aria-hidden="true" />}
           />
@@ -2561,6 +2803,38 @@ function TextRow({
   );
 }
 
+function ColorInputRow({
+  label,
+  detail,
+  value,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="settings-row">
+      <RowText label={label} detail={detail} />
+      <span className="flex items-center gap-2">
+        <input
+          type="color"
+          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#050608"}
+          onChange={(event) => onChange(event.target.value)}
+          className="size-10 rounded-xl border border-border/72 bg-background/64 p-1"
+        />
+        <input
+          value={value}
+          readOnly
+          aria-label={`${label} value`}
+          className="h-10 w-28 rounded-xl border border-border/72 bg-background/64 px-3 text-[13px] text-foreground outline-none shadow-[inset_0_1px_0_hsl(0_0%_100%/0.04)] transition focus:border-primary/65 focus:ring-[4px] focus:ring-primary/14"
+        />
+      </span>
+    </label>
+  );
+}
+
 function TextAreaRow({
   label,
   detail,
@@ -2728,6 +3002,62 @@ function StatusCard({ title, detail, icon }: { title: string; detail: string; ic
         <h3 className="text-[15px] font-semibold">{title}</h3>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
       </span>
+    </section>
+  );
+}
+
+function AppearancePreview({ settings }: { settings: BrowserSettings }) {
+  const radiusClass =
+    settings.cornerRadius === "subtle"
+      ? "rounded-lg"
+      : settings.cornerRadius === "ultra-rounded"
+        ? "rounded-[2rem]"
+        : "rounded-2xl";
+  const densityClass =
+    settings.toolbarDensity === "compact"
+      ? "gap-2 p-3"
+      : settings.toolbarDensity === "spacious"
+        ? "gap-4 p-5"
+        : "gap-3 p-4";
+  const transparencyClass =
+    settings.panelTransparency === "low"
+      ? "bg-card/88"
+      : settings.panelTransparency === "high"
+        ? "bg-card/48"
+        : "bg-card/68";
+
+  return (
+    <section
+      className={cn(
+        "settings-card overflow-hidden border border-border/62 shadow-[inset_0_1px_0_hsl(0_0%_100%/0.06),0_18px_54px_hsl(225_40%_2%/0.24)]",
+        radiusClass,
+        transparencyClass,
+      )}
+    >
+      <div className={cn("relative min-h-44", densityClass)}>
+        <div className="absolute inset-0 opacity-70">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,hsl(var(--primary)/0.28),transparent_30%),radial-gradient(circle_at_82%_70%,hsl(188_93%_48%/0.18),transparent_34%),linear-gradient(135deg,hsl(var(--background)),hsl(var(--card)))]" />
+        </div>
+        <div className="relative flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <span className="h-7 w-24 rounded-t-xl border border-border/70 border-b-card bg-card/92" />
+            <span className="grid size-7 place-items-center rounded-lg border border-border/60 bg-background/42 text-primary">
+              +
+            </span>
+            <span className="ml-auto h-2 w-12 rounded-full bg-primary/70" />
+          </div>
+          <div className="flex items-center gap-2 rounded-2xl border border-border/64 bg-background/50 px-3 py-2">
+            <span className="size-3 rounded-full bg-primary" />
+            <span className="h-2 flex-1 rounded-full bg-muted" />
+            <span className="size-5 rounded-lg bg-primary/18" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <span className={cn("h-14 border border-border/60 bg-background/45", radiusClass)} />
+            <span className={cn("h-14 border border-primary/45 bg-primary/12", radiusClass)} />
+            <span className={cn("h-14 border border-border/60 bg-background/45", radiusClass)} />
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

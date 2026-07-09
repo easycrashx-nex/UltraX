@@ -21,6 +21,12 @@ export type UltraXApi = {
 
   createTab: () => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
+  duplicateTab: (tabId: string) => Promise<void>;
+  pinTab: (tabId: string, pinned: boolean) => Promise<void>;
+  reorderTab: (tabId: string, targetTabId: string) => Promise<void>;
+  closeOtherTabs: (tabId: string) => Promise<void>;
+  closeTabsToRight: (tabId: string) => Promise<void>;
+  moveTabToNewWindow: (tabId: string) => Promise<void>;
   switchTab: (tabId: string) => Promise<void>;
   navigate: (input: string) => Promise<void>;
   goHome: () => Promise<void>;
@@ -68,6 +74,9 @@ export type UltraXApi = {
   openDownloadsFolder: () => Promise<void>;
   clearDownloads: () => Promise<void>;
 
+  chooseNewTabCustomImage: () => Promise<string | null>;
+  removeNewTabCustomImage: () => Promise<void>;
+
   clearBookmarks: () => Promise<void>;
 
   loadUnpackedExtension: () => Promise<InstalledExtension | null>;
@@ -93,8 +102,10 @@ export type UltraXApi = {
   minimizeWindow: () => Promise<void>;
   toggleMaximizeWindow: () => Promise<void>;
   closeWindow: () => Promise<void>;
+  closeWindowWithBehavior: (discardSession: boolean) => Promise<void>;
 
   onStateChanged: (callback: (state: BrowserState) => void) => Unsubscribe;
   onFocusAddressBar: (callback: () => void) => Unsubscribe;
+  onCloseRequested: (callback: () => void) => Unsubscribe;
   onUpdateStatusChanged: (callback: (status: UpdateStatusSnapshot) => void) => Unsubscribe;
 };

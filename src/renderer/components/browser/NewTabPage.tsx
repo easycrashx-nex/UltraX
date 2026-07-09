@@ -13,6 +13,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -60,15 +61,20 @@ export function NewTabPage({
     settings.performanceMode === "efficiency" && settings.disableShaderOnEfficiencyMode;
   const pausedByFocus = settings.pauseShaderWhenUnfocused && !windowFocused;
   const shouldRenderShader =
-    settings.shaderEnabled && !reducedVisuals && !disabledByEfficiencyMode && !pausedByFocus;
+    settings.newTabBackground === "ultrax-wave" &&
+    settings.shaderEnabled &&
+    !reducedVisuals &&
+    !disabledByEfficiencyMode &&
+    !pausedByFocus;
   const shaderOpacity =
-    settings.backgroundShaderPerformance === "low"
+    settings.shaderIntensity === "low" || settings.backgroundShaderPerformance === "low"
       ? "opacity-45"
-      : settings.backgroundShaderPerformance === "high"
+      : settings.shaderIntensity === "high" || settings.backgroundShaderPerformance === "high"
         ? "opacity-85"
         : settings.backgroundShaderPerformance === "ultra"
           ? "opacity-95"
           : "opacity-70";
+  const backgroundStyle = getNewTabBackgroundStyle(settings);
 
   useEffect(() => {
     const syncFocus = () => setWindowFocused(document.hasFocus());
@@ -91,18 +97,43 @@ export function NewTabPage({
   };
 
   return (
-    <main className="browser-content-start fixed inset-x-0 bottom-0 overflow-hidden bg-background">
+    <main
+      className="browser-content-start fixed inset-x-0 bottom-0 overflow-hidden bg-background"
+      style={backgroundStyle}
+    >
       {shouldRenderShader ? (
         <Suspense fallback={<StaticShaderBackdrop />}>
-          <ShaderAnimation className={cn(shaderOpacity)} />
+          <ShaderAnimation
+            className={cn(shaderOpacity)}
+            preset={settings.shaderPreset}
+            speed={settings.shaderSpeed}
+          />
         </Suspense>
       ) : (
-        <StaticShaderBackdrop />
+        <StaticShaderBackdrop settings={settings} />
       )}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,hsl(var(--background)/0.28),hsl(var(--background)/0.94)_68%),linear-gradient(180deg,hsl(var(--background)/0.62),hsl(var(--background)))]" />
 
-      <section className="relative z-10 flex h-full items-start justify-center px-6 pb-6 pt-10">
-        <div className="flex w-full max-w-[760px] flex-col items-center gap-4">
+      <section
+        className={cn(
+          "relative z-10 flex h-full items-start justify-center px-6 pb-6",
+          settings.toolbarDensity === "compact"
+            ? "pt-7"
+            : settings.toolbarDensity === "spacious"
+              ? "pt-14"
+              : "pt-10",
+        )}
+      >
+        <div
+          className={cn(
+            "flex w-full max-w-[760px] flex-col items-center",
+            settings.toolbarDensity === "compact"
+              ? "gap-3"
+              : settings.toolbarDensity === "spacious"
+                ? "gap-5"
+                : "gap-4",
+          )}
+        >
           <div className="flex flex-col items-center gap-2 text-center">
             <div className="grid size-10 place-items-center rounded-lg border border-border bg-card/70 text-primary shadow-xl shadow-black/20">
               <Sparkles aria-hidden="true" className="size-5" />
@@ -215,11 +246,42 @@ function QuickAction({
   );
 }
 
-function StaticShaderBackdrop() {
+function StaticShaderBackdrop({ settings }: { settings?: BrowserSettings }) {
+  const className =
+    settings?.newTabBackground === "aurora"
+      ? "bg-[radial-gradient(circle_at_18%_28%,hsl(188_93%_48%/0.24),transparent_30%),radial-gradient(circle_at_82%_32%,hsl(262_89%_66%/0.2),transparent_32%),linear-gradient(135deg,hsl(var(--background)),hsl(223_38%_10%))]"
+      : settings?.newTabBackground === "gradient-mesh"
+        ? "bg-[radial-gradient(circle_at_18%_20%,hsl(var(--primary)/0.24),transparent_28%),radial-gradient(circle_at_68%_36%,hsl(151_68%_48%/0.14),transparent_30%),radial-gradient(circle_at_50%_84%,hsl(344_89%_66%/0.12),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--card)))]"
+        : settings?.newTabBackground === "minimal-dark"
+          ? "bg-[linear-gradient(180deg,hsl(224_28%_5%),hsl(224_28%_4%))]"
+          : "bg-[radial-gradient(circle_at_72%_36%,hsl(var(--primary)/0.14),transparent_32%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--background)))]";
+
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_72%_36%,hsl(var(--primary)/0.14),transparent_32%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--background)))]"
+      className={cn("pointer-events-none absolute inset-0", className)}
     />
   );
+}
+
+function getNewTabBackgroundStyle(settings: BrowserSettings): CSSProperties {
+  if (settings.newTabBackground === "solid-color") {
+    return { background: settings.newTabSolidColor };
+  }
+
+  if (settings.newTabBackground === "custom-image" && settings.newTabCustomImagePath) {
+    return {
+      backgroundImage: `url("${toFileUrl(settings.newTabCustomImagePath)}")`,
+      backgroundPosition: "center",
+      backgroundSize: "cover",
+    };
+  }
+
+  return {};
+}
+
+function toFileUrl(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, "/");
+  const prefixed = normalized.startsWith("/") ? `file://${normalized}` : `file:///${normalized}`;
+  return encodeURI(prefixed);
 }

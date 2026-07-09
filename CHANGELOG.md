@@ -1,5 +1,28 @@
 # UltraX Browser Changelog
 
+## 1.0.8 - Browser UX, Appearance, and Tab Management
+
+### Added
+
+- Added the `When closing UltraX` setting with restore, ask, and discard session behavior.
+- Added an UltraX-designed close confirmation dialog for real close-risk cases.
+- Added pinned tabs, tab drag-and-drop reordering, and persisted pinned/tab order state.
+- Added a custom tab context menu with New Tab, Reload, Duplicate, Pin/Unpin, Close, Close Other Tabs, and Close Tabs to the Right.
+- Added expanded Appearance controls for interface density, corner radius, glass blur, panel transparency, animation level, New Tab backgrounds, shader presets, intensity, and speed.
+- Added New Tab backgrounds for UltraX Wave, Aurora, Gradient Mesh, Minimal Dark, Solid Color, and local Custom Image.
+
+### Improved
+
+- Closing with session restore no longer shows the old native Windows confirmation prompt.
+- Empty browser chrome areas now use proper frameless drag regions while controls remain clickable.
+- New Tab shader settings now affect shader preset color direction and speed.
+- Custom New Tab images are selected through a safe main-process file dialog and copied into UltraX user data.
+
+### Known Limitations
+
+- Move Tab to New Window is prepared as a disabled context menu action for v1.0.8; full multi-window WebContentsView ownership is planned for a later update.
+- Mute Site is visible as a disabled context menu placeholder until per-site audio state is wired.
+
 ## 1.0.7 - Search Suggestions and Release Trust QoL
 
 ### Added

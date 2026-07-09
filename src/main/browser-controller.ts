@@ -100,9 +100,12 @@ export class BrowserController {
     const activeIndex = this.state.tabs.findIndex(
       (item) => item.id === this.state.activeTabId,
     );
+    const pinnedCount = this.getPinnedTabCount();
     const insertIndex =
-      this.state.settings.openTabsNextToCurrent && activeIndex >= 0
-        ? activeIndex + 1
+      this.state.settings.openTabsNextToCurrent &&
+      activeIndex >= pinnedCount &&
+      activeIndex >= 0
+        ? Math.max(pinnedCount, activeIndex + 1)
         : this.state.tabs.length;
     this.state.tabs.splice(insertIndex, 0, tab);
 
@@ -147,6 +150,101 @@ export class BrowserController {
     }
 
     this.persistAndEmit();
+  }
+
+  duplicateTab(tabId: string): void {
+    const source = this.state.tabs.find((tab) => tab.id === tabId);
+    if (!source) {
+      return;
+    }
+
+    const duplicate = this.createTabRecord(
+      source.isNewTab || !isSafeWebUrl(source.url) ? undefined : source.url,
+      source.title,
+    );
+    duplicate.favicon = source.favicon;
+
+    const sourceIndex = this.state.tabs.findIndex((tab) => tab.id === tabId);
+    const pinnedCount = this.getPinnedTabCount();
+    this.state.tabs.splice(Math.max(pinnedCount, sourceIndex + 1), 0, duplicate);
+
+    if (!duplicate.isNewTab) {
+      const view = this.createWebView(duplicate.id);
+      this.views.set(duplicate.id, view);
+      void this.safeLoad(duplicate.id, duplicate.url);
+    }
+
+    this.state.activeTabId = duplicate.id;
+    this.attachActiveView();
+    this.persistAndEmit();
+  }
+
+  setTabPinned(tabId: string, pinned: boolean): void {
+    const index = this.state.tabs.findIndex((tab) => tab.id === tabId);
+    if (index === -1) {
+      return;
+    }
+
+    const [tab] = this.state.tabs.splice(index, 1);
+    tab.isPinned = pinned;
+    const pinnedCount = this.getPinnedTabCount();
+    this.state.tabs.splice(pinned ? pinnedCount : Math.max(pinnedCount, 0), 0, tab);
+    this.persistAndEmit();
+  }
+
+  reorderTab(tabId: string, targetTabId: string): void {
+    if (tabId === targetTabId) {
+      return;
+    }
+
+    const fromIndex = this.state.tabs.findIndex((tab) => tab.id === tabId);
+    const targetIndex = this.state.tabs.findIndex((tab) => tab.id === targetTabId);
+    if (fromIndex === -1 || targetIndex === -1) {
+      return;
+    }
+
+    const [tab] = this.state.tabs.splice(fromIndex, 1);
+    const targetAfterRemoval = this.state.tabs.findIndex((item) => item.id === targetTabId);
+    const pinnedCount = this.getPinnedTabCount();
+    let insertIndex = targetAfterRemoval === -1 ? this.state.tabs.length : targetAfterRemoval;
+
+    insertIndex = tab.isPinned
+      ? Math.min(insertIndex, pinnedCount)
+      : Math.max(insertIndex, pinnedCount);
+
+    this.state.tabs.splice(insertIndex, 0, tab);
+    this.persistAndEmit();
+  }
+
+  closeOtherTabs(tabId: string): void {
+    if (!this.state.tabs.some((tab) => tab.id === tabId)) {
+      return;
+    }
+
+    for (const tab of [...this.state.tabs]) {
+      if (tab.id !== tabId && !tab.isPinned) {
+        this.closeTab(tab.id);
+      }
+    }
+
+    this.switchTab(tabId);
+  }
+
+  closeTabsToRight(tabId: string): void {
+    const index = this.state.tabs.findIndex((tab) => tab.id === tabId);
+    if (index === -1) {
+      return;
+    }
+
+    for (const tab of this.state.tabs.slice(index + 1).filter((item) => !item.isPinned)) {
+      this.closeTab(tab.id);
+    }
+  }
+
+  moveTabToNewWindow(_tabId: string): void {
+    // TODO(v1.0.9): split BrowserController state by window before moving
+    // WebContentsView ownership across BrowserWindow instances.
+    throw new Error("Move Tab to New Window is prepared but not enabled in v1.0.8.");
   }
 
   switchTab(tabId: string): void {
@@ -618,8 +716,79 @@ export class BrowserController {
     return downloadPath;
   }
 
+  async chooseNewTabCustomImage(): Promise<string | null> {
+    const result = await dialog.showOpenDialog(this.window, {
+      title: "Choose New Tab background image",
+      properties: ["openFile"],
+      filters: [
+        { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] },
+      ],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    const [imagePath] = result.filePaths;
+    const extension = path.extname(imagePath).toLowerCase();
+    if (![".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) {
+      throw new Error("Choose a PNG, JPG, WEBP, or GIF image.");
+    }
+
+    const targetDirectory = path.join(app.getPath("userData"), "backgrounds");
+    fs.mkdirSync(targetDirectory, { recursive: true });
+    const targetPath = path.join(targetDirectory, `new-tab-custom${extension}`);
+    fs.copyFileSync(imagePath, targetPath);
+
+    this.updateSettings({
+      newTabBackground: "custom-image",
+      newTabCustomImagePath: targetPath,
+    });
+
+    return targetPath;
+  }
+
+  removeNewTabCustomImage(): void {
+    this.updateSettings({
+      newTabBackground: "ultrax-wave",
+      newTabCustomImagePath: "",
+    });
+  }
+
   async openDownloadsFolder(): Promise<void> {
     await shell.openPath(this.resolveDownloadDirectory());
+  }
+
+  hasCloseRisk(): boolean {
+    return this.state.downloads.some((download) => download.state === "progressing");
+  }
+
+  shouldAskBeforeWindowClose(): boolean {
+    if (this.hasCloseRisk()) {
+      return true;
+    }
+
+    if (this.state.settings.closeBehavior !== "ask-before-closing-multiple-tabs") {
+      return false;
+    }
+
+    return this.getNormalClosableTabs().length > 1;
+  }
+
+  prepareForWindowClose(discardSession: boolean): void {
+    if (discardSession) {
+      this.state.tabs = [];
+      this.state.activeTabId = null;
+      this.state.settings = {
+        ...this.state.settings,
+        startupBehavior: "new-tab",
+        restoreTabsOnLaunch: false,
+      };
+      this.storage.save(this.state);
+      return;
+    }
+
+    this.storage.save(this.state);
   }
 
   focusAddressBar(): void {
@@ -650,6 +819,7 @@ export class BrowserController {
           persistedTab.title,
         );
         tab.favicon = persistedTab.favicon;
+        tab.isPinned = Boolean(persistedTab.isPinned);
         this.state.tabs.push(tab);
 
         if (!tab.isNewTab) {
@@ -705,6 +875,7 @@ export class BrowserController {
       canGoBack: false,
       canGoForward: false,
       isNewTab,
+      isPinned: false,
     };
   }
 
@@ -975,6 +1146,14 @@ export class BrowserController {
     const nextIndex =
       (currentIndex + direction + this.state.tabs.length) % this.state.tabs.length;
     this.switchTab(this.state.tabs[nextIndex].id);
+  }
+
+  private getPinnedTabCount(): number {
+    return this.state.tabs.filter((tab) => tab.isPinned).length;
+  }
+
+  private getNormalClosableTabs(): BrowserTab[] {
+    return this.state.tabs.filter((tab) => !tab.isPinned && !tab.isNewTab);
   }
 
   private getActiveTab(): BrowserTab | undefined {

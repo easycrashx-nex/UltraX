@@ -65,10 +65,17 @@ function applyShellPreferences(settings: BrowserSettings) {
   root.classList.toggle("contrast-more", settings.increaseContrast);
   root.classList.toggle("text-large", settings.textScale === "large");
   root.classList.toggle("motion-reduced", settings.reducedMotion);
+  root.classList.toggle("density-compact", settings.toolbarDensity === "compact");
+  root.classList.toggle("density-spacious", settings.toolbarDensity === "spacious");
+  root.classList.toggle("animation-minimal", settings.animationLevel === "minimal");
+  root.classList.toggle("animation-expressive", settings.animationLevel === "expressive");
 
   const accent = getAccentHsl(settings.accentColor);
   root.style.setProperty("--primary", accent);
   root.style.setProperty("--ring", accent);
+  root.style.setProperty("--radius", getRadiusValue(settings.cornerRadius));
+  root.style.setProperty("--glass-blur", getGlassBlur(settings.blurIntensity));
+  root.style.setProperty("--panel-alpha", getPanelAlpha(settings.panelTransparency));
 }
 
 function getAccentHsl(accent: AccentColor): string {
@@ -82,4 +89,31 @@ function getAccentHsl(accent: AccentColor): string {
   };
 
   return accents[accent];
+}
+
+function getRadiusValue(radius: BrowserSettings["cornerRadius"]): string {
+  const radii: Record<BrowserSettings["cornerRadius"], string> = {
+    subtle: "6px",
+    rounded: "8px",
+    "ultra-rounded": "14px",
+  };
+  return radii[radius];
+}
+
+function getGlassBlur(blur: BrowserSettings["blurIntensity"]): string {
+  const blurs: Record<BrowserSettings["blurIntensity"], string> = {
+    low: "14px",
+    balanced: "24px",
+    high: "34px",
+  };
+  return blurs[blur];
+}
+
+function getPanelAlpha(transparency: BrowserSettings["panelTransparency"]): string {
+  const values: Record<BrowserSettings["panelTransparency"], string> = {
+    low: "0.9",
+    balanced: "0.72",
+    high: "0.54",
+  };
+  return values[transparency];
 }

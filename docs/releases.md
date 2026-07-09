@@ -5,7 +5,7 @@
 Use patch releases for focused improvements:
 
 ```powershell
-npm version 1.0.7 --no-git-tag-version
+npm version 1.0.8 --no-git-tag-version
 ```
 
 Update `CHANGELOG.md` before tagging.
@@ -43,8 +43,8 @@ Skip the command if `origin` already points to that URL.
 The release workflow runs on tags:
 
 ```powershell
-git tag v1.0.7
-git push origin v1.0.7
+git tag v1.0.8
+git push origin v1.0.8
 ```
 
 The workflow:

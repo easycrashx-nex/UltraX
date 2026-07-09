@@ -26,6 +26,7 @@ import { UpdateManager } from "./updates/update-manager";
 let mainWindow: BrowserWindow | null = null;
 let controller: BrowserController | null = null;
 let updateManager: UpdateManager | null = null;
+let allowWindowClose = false;
 
 const shouldUseDevServer = !app.isPackaged && process.env.ULTRAX_DEV_SERVER === "1";
 const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5173";
@@ -83,6 +84,28 @@ function createWindow(): void {
   );
   registerIpc(mainWindow, controller, updateManager);
 
+  mainWindow.on("close", (event) => {
+    if (allowWindowClose) {
+      return;
+    }
+
+    const currentController = controller;
+    if (!currentController) {
+      return;
+    }
+
+    if (currentController.shouldAskBeforeWindowClose()) {
+      event.preventDefault();
+      mainWindow?.webContents.send(IPC.requestCloseConfirmation);
+      return;
+    }
+
+    const discardSession =
+      currentController.getState().settings.closeBehavior === "close-and-discard-session";
+    currentController.prepareForWindowClose(discardSession);
+    allowWindowClose = true;
+  });
+
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
     controller?.init();
@@ -96,6 +119,7 @@ function createWindow(): void {
   }
 
   mainWindow.on("closed", () => {
+    allowWindowClose = false;
     controller?.dispose();
     mainWindow = null;
     controller = null;
@@ -152,6 +176,30 @@ function registerIpc(
   handle(IPC.createTab, () => browser.createTab(undefined, true));
   handle(IPC.closeTab, (_event, tabId) =>
     browser.closeTab(readString(tabId, "tabId", 128)),
+  );
+  handle(IPC.duplicateTab, (_event, tabId) =>
+    browser.duplicateTab(readString(tabId, "tabId", 128)),
+  );
+  handle(IPC.pinTab, (_event, tabId, pinned) =>
+    browser.setTabPinned(
+      readString(tabId, "tabId", 128),
+      readBoolean(pinned, "pinned tab state"),
+    ),
+  );
+  handle(IPC.reorderTab, (_event, tabId, targetTabId) =>
+    browser.reorderTab(
+      readString(tabId, "tabId", 128),
+      readString(targetTabId, "target tabId", 128),
+    ),
+  );
+  handle(IPC.closeOtherTabs, (_event, tabId) =>
+    browser.closeOtherTabs(readString(tabId, "tabId", 128)),
+  );
+  handle(IPC.closeTabsToRight, (_event, tabId) =>
+    browser.closeTabsToRight(readString(tabId, "tabId", 128)),
+  );
+  handle(IPC.moveTabToNewWindow, (_event, tabId) =>
+    browser.moveTabToNewWindow(readString(tabId, "tabId", 128)),
   );
   handle(IPC.switchTab, (_event, tabId) =>
     browser.switchTab(readString(tabId, "tabId", 128)),
@@ -212,6 +260,8 @@ function registerIpc(
     await browser.openDownloadsFolder();
   });
   handle(IPC.clearDownloads, () => browser.clearDownloads());
+  handle(IPC.chooseNewTabCustomImage, async () => browser.chooseNewTabCustomImage());
+  handle(IPC.removeNewTabCustomImage, () => browser.removeNewTabCustomImage());
   handle(IPC.clearBookmarks, () => browser.clearBookmarks());
   handle(IPC.loadUnpackedExtension, async () => browser.loadUnpackedExtension());
   handle(IPC.validateUnpackedExtension, async () => browser.validateUnpackedExtension());
@@ -262,10 +312,23 @@ function registerIpc(
     }
   });
   handle(IPC.closeWindow, () => window.close());
+  handle(IPC.closeWindowWithBehavior, (_event, discardSession) => {
+    browser.prepareForWindowClose(readBoolean(discardSession, "discard session close state"));
+    allowWindowClose = true;
+    window.close();
+  });
 }
 
 function readString(value: unknown, fieldName: string, maxLength: number): string {
   if (typeof value !== "string" || value.length > maxLength) {
+    throw new Error(`Invalid ${fieldName}.`);
+  }
+
+  return value;
+}
+
+function readHexColor(value: unknown, fieldName: string): string {
+  if (typeof value !== "string" || !/^#[0-9a-fA-F]{6}$/.test(value)) {
     throw new Error(`Invalid ${fieldName}.`);
   }
 
@@ -403,6 +466,21 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
     );
   }
 
+  if (candidate.closeBehavior !== undefined) {
+    if (
+      ![
+        "ask-before-closing-multiple-tabs",
+        "close-and-restore-session",
+        "close-and-discard-session",
+      ].includes(candidate.closeBehavior)
+    ) {
+      throw new Error("Invalid close behavior.");
+    }
+    patch.closeBehavior = candidate.closeBehavior;
+    patch.confirmBeforeClosingMultipleTabs =
+      candidate.closeBehavior === "ask-before-closing-multiple-tabs";
+  }
+
   if (candidate.homeBehavior !== undefined) {
     if (!["new-tab", "custom-url"].includes(candidate.homeBehavior)) {
       throw new Error("Invalid home behavior.");
@@ -433,10 +511,94 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
   }
 
   if (candidate.toolbarDensity !== undefined) {
-    if (!["compact", "comfortable"].includes(candidate.toolbarDensity)) {
+    if (!["compact", "comfortable", "spacious"].includes(candidate.toolbarDensity)) {
       throw new Error("Invalid toolbar density.");
     }
     patch.toolbarDensity = candidate.toolbarDensity;
+  }
+
+  if (candidate.cornerRadius !== undefined) {
+    if (!["subtle", "rounded", "ultra-rounded"].includes(candidate.cornerRadius)) {
+      throw new Error("Invalid corner radius.");
+    }
+    patch.cornerRadius = candidate.cornerRadius;
+  }
+
+  if (candidate.blurIntensity !== undefined) {
+    if (!["low", "balanced", "high"].includes(candidate.blurIntensity)) {
+      throw new Error("Invalid blur intensity.");
+    }
+    patch.blurIntensity = candidate.blurIntensity;
+  }
+
+  if (candidate.panelTransparency !== undefined) {
+    if (!["low", "balanced", "high"].includes(candidate.panelTransparency)) {
+      throw new Error("Invalid panel transparency.");
+    }
+    patch.panelTransparency = candidate.panelTransparency;
+  }
+
+  if (candidate.animationLevel !== undefined) {
+    if (!["minimal", "balanced", "expressive"].includes(candidate.animationLevel)) {
+      throw new Error("Invalid animation level.");
+    }
+    patch.animationLevel = candidate.animationLevel;
+  }
+
+  if (candidate.newTabBackground !== undefined) {
+    if (
+      ![
+        "ultrax-wave",
+        "aurora",
+        "gradient-mesh",
+        "minimal-dark",
+        "solid-color",
+        "custom-image",
+      ].includes(candidate.newTabBackground)
+    ) {
+      throw new Error("Invalid New Tab background.");
+    }
+    patch.newTabBackground = candidate.newTabBackground;
+  }
+
+  if (candidate.newTabSolidColor !== undefined) {
+    patch.newTabSolidColor = readHexColor(candidate.newTabSolidColor, "New Tab solid color");
+  }
+
+  if (candidate.newTabCustomImagePath !== undefined) {
+    if (candidate.newTabCustomImagePath !== "") {
+      throw new Error("Custom New Tab image paths must be chosen through UltraX.");
+    }
+    patch.newTabCustomImagePath = "";
+  }
+
+  if (candidate.shaderPreset !== undefined) {
+    if (
+      ![
+        "ultrax-wave",
+        "blue-nebula",
+        "purple-flow",
+        "aurora-lines",
+        "calm-grid",
+      ].includes(candidate.shaderPreset)
+    ) {
+      throw new Error("Invalid shader preset.");
+    }
+    patch.shaderPreset = candidate.shaderPreset;
+  }
+
+  if (candidate.shaderIntensity !== undefined) {
+    if (!["low", "balanced", "high"].includes(candidate.shaderIntensity)) {
+      throw new Error("Invalid shader intensity.");
+    }
+    patch.shaderIntensity = candidate.shaderIntensity;
+  }
+
+  if (candidate.shaderSpeed !== undefined) {
+    if (!["slow", "normal", "fast"].includes(candidate.shaderSpeed)) {
+      throw new Error("Invalid shader speed.");
+    }
+    patch.shaderSpeed = candidate.shaderSpeed;
   }
 
   if (candidate.showBookmarksBar !== undefined) {
@@ -470,10 +632,14 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
   }
 
   if (candidate.confirmBeforeClosingMultipleTabs !== undefined) {
-    patch.confirmBeforeClosingMultipleTabs = readBoolean(
+    const confirmBeforeClosingMultipleTabs = readBoolean(
       candidate.confirmBeforeClosingMultipleTabs,
       "close confirmation setting",
     );
+    patch.confirmBeforeClosingMultipleTabs = confirmBeforeClosingMultipleTabs;
+    patch.closeBehavior = confirmBeforeClosingMultipleTabs
+      ? "ask-before-closing-multiple-tabs"
+      : "close-and-restore-session";
   }
 
   if (candidate.askWhereToSaveDownloads !== undefined) {

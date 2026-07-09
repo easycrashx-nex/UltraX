@@ -1,24 +1,35 @@
 import { app } from "electron";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type {
   AccentColor,
   BrowserSettings,
   BrowserState,
+  BrowserTab,
+  BlurIntensity,
+  CloseBehavior,
+  CornerRadius,
   DownloadRetention,
   HistoryRetention,
   HomeBehavior,
+  InterfaceDensity,
+  AnimationLevel,
+  NewTabBackground,
+  PanelTransparency,
   PerformanceMode,
   PermissionPolicy,
   SearchEngine,
   SearchSuggestionProvider,
   ShaderFpsCap,
+  ShaderIntensity,
   ShaderPerformance,
+  ShaderPreset,
+  ShaderSpeed,
   SitePermissionKey,
   StartupBehavior,
   TabSuspendDelay,
   ThemeMode,
-  ToolbarDensity,
   UpdateChannel,
 } from "../shared/types";
 import { ensureBuiltInExtensions } from "./extensions";
@@ -75,19 +86,30 @@ export const DEFAULT_SETTINGS: BrowserSettings = {
   addressBarSearch: true,
   startupBehavior: "restore-session",
   startupPages: [],
+  closeBehavior: "close-and-restore-session",
   homeBehavior: "new-tab",
   homeUrl: "https://duckduckgo.com/",
   theme: "dark",
   glassMode: true,
   accentColor: "blue",
   toolbarDensity: "comfortable",
+  cornerRadius: "rounded",
+  blurIntensity: "balanced",
+  panelTransparency: "balanced",
+  animationLevel: "balanced",
+  newTabBackground: "ultrax-wave",
+  newTabSolidColor: "#050608",
+  newTabCustomImagePath: "",
+  shaderPreset: "ultrax-wave",
+  shaderIntensity: "balanced",
+  shaderSpeed: "normal",
   showBookmarksBar: true,
   showHomeButton: true,
   shaderEnabled: true,
   reducedMotion: false,
   restoreTabsOnLaunch: true,
   openTabsNextToCurrent: false,
-  confirmBeforeClosingMultipleTabs: true,
+  confirmBeforeClosingMultipleTabs: false,
   askWhereToSaveDownloads: false,
   downloadPath: "",
   downloadRetention: "forever",
@@ -196,7 +218,7 @@ function normalizeState(state?: Partial<BrowserState>): BrowserState {
   const settings = normalizeSettings(state?.settings);
 
   return {
-    tabs: Array.isArray(state?.tabs) ? state.tabs : defaults.tabs,
+    tabs: normalizeTabs(state?.tabs),
     activeTabId:
       typeof state?.activeTabId === "string" ? state.activeTabId : defaults.activeTabId,
     bookmarks: Array.isArray(state?.bookmarks)
@@ -262,6 +284,12 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
     startupPages: Array.isArray(settings?.startupPages)
       ? settings.startupPages.filter((item) => typeof item === "string").slice(0, 12)
       : DEFAULT_SETTINGS.startupPages,
+    closeBehavior:
+      enumValue<CloseBehavior>(settings?.closeBehavior, [
+        "ask-before-closing-multiple-tabs",
+        "close-and-restore-session",
+        "close-and-discard-session",
+      ]) ?? DEFAULT_SETTINGS.closeBehavior,
     homeBehavior:
       enumValue<HomeBehavior>(legacyHomeBehavior, ["new-tab", "custom-url"]) ??
       DEFAULT_SETTINGS.homeBehavior,
@@ -280,8 +308,65 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
         "orange",
       ]) ?? DEFAULT_SETTINGS.accentColor,
     toolbarDensity:
-      enumValue<ToolbarDensity>(settings?.toolbarDensity, ["compact", "comfortable"]) ??
+      enumValue<InterfaceDensity>(settings?.toolbarDensity, [
+        "compact",
+        "comfortable",
+        "spacious",
+      ]) ??
       DEFAULT_SETTINGS.toolbarDensity,
+    cornerRadius:
+      enumValue<CornerRadius>(settings?.cornerRadius, [
+        "subtle",
+        "rounded",
+        "ultra-rounded",
+      ]) ?? DEFAULT_SETTINGS.cornerRadius,
+    blurIntensity:
+      enumValue<BlurIntensity>(settings?.blurIntensity, ["low", "balanced", "high"]) ??
+      DEFAULT_SETTINGS.blurIntensity,
+    panelTransparency:
+      enumValue<PanelTransparency>(settings?.panelTransparency, [
+        "low",
+        "balanced",
+        "high",
+      ]) ?? DEFAULT_SETTINGS.panelTransparency,
+    animationLevel:
+      enumValue<AnimationLevel>(settings?.animationLevel, [
+        "minimal",
+        "balanced",
+        "expressive",
+      ]) ?? DEFAULT_SETTINGS.animationLevel,
+    newTabBackground:
+      enumValue<NewTabBackground>(settings?.newTabBackground, [
+        "ultrax-wave",
+        "aurora",
+        "gradient-mesh",
+        "minimal-dark",
+        "solid-color",
+        "custom-image",
+      ]) ?? DEFAULT_SETTINGS.newTabBackground,
+    newTabSolidColor: normalizeHexColor(
+      settings?.newTabSolidColor,
+      DEFAULT_SETTINGS.newTabSolidColor,
+    ),
+    newTabCustomImagePath: safeString(
+      settings?.newTabCustomImagePath,
+      1024,
+      DEFAULT_SETTINGS.newTabCustomImagePath,
+    ),
+    shaderPreset:
+      enumValue<ShaderPreset>(settings?.shaderPreset, [
+        "ultrax-wave",
+        "blue-nebula",
+        "purple-flow",
+        "aurora-lines",
+        "calm-grid",
+      ]) ?? DEFAULT_SETTINGS.shaderPreset,
+    shaderIntensity:
+      enumValue<ShaderIntensity>(settings?.shaderIntensity, ["low", "balanced", "high"]) ??
+      DEFAULT_SETTINGS.shaderIntensity,
+    shaderSpeed:
+      enumValue<ShaderSpeed>(settings?.shaderSpeed, ["slow", "normal", "fast"]) ??
+      DEFAULT_SETTINGS.shaderSpeed,
     showBookmarksBar: boolValue(settings?.showBookmarksBar, DEFAULT_SETTINGS.showBookmarksBar),
     showHomeButton: boolValue(settings?.showHomeButton, DEFAULT_SETTINGS.showHomeButton),
     shaderEnabled: boolValue(settings?.shaderEnabled, DEFAULT_SETTINGS.shaderEnabled),
@@ -444,6 +529,34 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
   };
 }
 
+function normalizeTabs(value: unknown): BrowserTab[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is Partial<BrowserTab> => Boolean(item) && typeof item === "object")
+    .slice(0, 120)
+    .map((tab) => ({
+      id: typeof tab.id === "string" && tab.id ? tab.id : randomUUID(),
+      url: safeString(tab.url, 4096, "ultrax://new-tab"),
+      title: safeString(tab.title, 512, "New Tab"),
+      favicon:
+        typeof tab.favicon === "string" && tab.favicon.length <= 4096
+          ? tab.favicon
+          : undefined,
+      isLoading: boolValue(tab.isLoading, false),
+      canGoBack: boolValue(tab.canGoBack, false),
+      canGoForward: boolValue(tab.canGoForward, false),
+      isNewTab: boolValue(tab.isNewTab, true),
+      isPinned: boolValue(tab.isPinned, false),
+      error:
+        typeof tab.error === "string" && tab.error.length <= 512
+          ? tab.error
+          : undefined,
+    }));
+}
+
 function normalizeSearchSuggestionSettings(
   value: unknown,
 ): BrowserSettings["searchSuggestionSettings"] {
@@ -560,6 +673,10 @@ function normalizeShaderPerformance(value: unknown): ShaderPerformance {
     enumValue<ShaderPerformance>(value, ["low", "balanced", "high", "ultra"]) ??
     DEFAULT_SETTINGS.backgroundShaderPerformance
   );
+}
+
+function normalizeHexColor(value: unknown, fallback: string): string {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
 }
 
 function enumValue<T extends string>(

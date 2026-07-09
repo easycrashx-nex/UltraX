@@ -94,6 +94,7 @@ export function Toolbar({
 }: ToolbarProps) {
   const bookmarked = isBookmarked(activeTab, bookmarks);
   const isCompact = settings.toolbarDensity === "compact";
+  const isSpacious = settings.toolbarDensity === "spacious";
   const visibleBookmarks = bookmarks.slice(0, 6);
   const [focused, setFocused] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
@@ -227,9 +228,9 @@ export function Toolbar({
   };
 
   return (
-    <div className="flex h-[68px] flex-col gap-1 border-b border-border/75 bg-card/88 px-3 py-1 backdrop-blur-xl">
+    <div className="drag-region flex h-[68px] flex-col gap-1 border-b border-border/75 bg-card/88 px-3 py-1 backdrop-blur-xl">
       <div className="flex min-h-9 min-w-0 items-center gap-2">
-        <div className="flex items-center gap-1">
+        <div className="no-drag flex items-center gap-1">
           <Button
             type="button"
             variant="chrome"
@@ -277,7 +278,7 @@ export function Toolbar({
           )}
         </div>
 
-        <form onSubmit={submitAddress} className="relative min-w-0 flex-1">
+        <form onSubmit={submitAddress} className="no-drag relative min-w-0 flex-1">
           <Search
             aria-hidden="true"
             className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -306,7 +307,7 @@ export function Toolbar({
             }
             className={cn(
               "rounded-xl border-border bg-background/72 pl-9 pr-10 text-[13px] shadow-[inset_0_1px_0_hsl(0_0%_100%/0.04)]",
-              isCompact ? "h-8" : "h-9",
+              isCompact ? "h-8" : isSpacious ? "h-10" : "h-9",
             )}
           />
           <Button
@@ -366,7 +367,7 @@ export function Toolbar({
           )}
         </form>
 
-        <div className="flex items-center gap-1">
+        <div className="no-drag flex items-center gap-1">
           <PanelButton
             label="Bookmarks"
             active={activePanel === "bookmarks"}
@@ -405,7 +406,7 @@ export function Toolbar({
       </div>
 
       {settings.showBookmarksBar ? (
-        <div className="flex min-h-[20px] min-w-0 items-center gap-2 text-[11px] leading-none text-muted-foreground">
+        <div className="no-drag flex min-h-[20px] min-w-0 items-center gap-2 text-[11px] leading-none text-muted-foreground">
           <span className="shrink-0 font-semibold text-foreground/80">Bookmarks</span>
           {visibleBookmarks.length === 0 ? (
             <span className="truncate">Use the star button to save this page.</span>
@@ -426,7 +427,7 @@ export function Toolbar({
           )}
         </div>
       ) : (
-        <div className="flex min-h-[20px] items-center justify-between text-[11px] leading-none text-muted-foreground">
+        <div className="no-drag flex min-h-[20px] items-center justify-between text-[11px] leading-none text-muted-foreground">
           <span className="truncate">
             {activeTab?.isNewTab
               ? "New Tab"

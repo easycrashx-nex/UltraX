@@ -8,7 +8,7 @@ import type {
   RuntimeInfo,
   UpdateStatusSnapshot,
 } from "@shared/types";
-import { AlertTriangle, RotateCw } from "lucide-react";
+import { AlertTriangle, RotateCw, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getAddressValue } from "@/lib/browser";
@@ -35,6 +35,10 @@ export function BrowserShell({ state }: BrowserShellProps) {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusSnapshot | null>(null);
   const [extensionStoreItems, setExtensionStoreItems] = useState<ExtensionStoreItem[]>([]);
   const [extensionPanel, setExtensionPanel] = useState<ExtensionPanelDescriptor | null>(null);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [restoreTabsNextClose, setRestoreTabsNextClose] = useState(
+    state.settings.closeBehavior !== "close-and-discard-session",
+  );
   const activeTab = useMemo(
     () => state.tabs.find((tab) => tab.id === state.activeTabId),
     [state.activeTabId, state.tabs],
@@ -52,6 +56,13 @@ export function BrowserShell({ state }: BrowserShellProps) {
       addressInputRef.current?.select();
     });
   }, []);
+
+  useEffect(() => {
+    return window.ultraX.onCloseRequested(() => {
+      setRestoreTabsNextClose(state.settings.closeBehavior !== "close-and-discard-session");
+      setCloseDialogOpen(true);
+    });
+  }, [state.settings.closeBehavior]);
 
   useEffect(() => {
     void window.ultraX.getRuntimeInfo().then(setRuntimeInfo);
@@ -220,15 +231,34 @@ export function BrowserShell({ state }: BrowserShellProps) {
   };
 
   const closeWindow = () => {
-    if (
-      state.settings.confirmBeforeClosingMultipleTabs &&
-      state.tabs.length > 1 &&
-      !window.confirm("Close UltraX and all open tabs?")
-    ) {
+    if (shouldShowCloseDialog(state)) {
+      setRestoreTabsNextClose(state.settings.closeBehavior !== "close-and-discard-session");
+      setCloseDialogOpen(true);
       return;
     }
 
-    void window.ultraX.closeWindow();
+    void window.ultraX.closeWindowWithBehavior(
+      state.settings.closeBehavior === "close-and-discard-session",
+    );
+  };
+
+  const confirmCloseWindow = () => {
+    setCloseDialogOpen(false);
+    void (async () => {
+      const discardSession =
+        state.settings.closeBehavior === "close-and-discard-session" && !restoreTabsNextClose;
+
+      if (restoreTabsNextClose && state.settings.closeBehavior === "close-and-discard-session") {
+        await window.ultraX.updateSettings({
+          closeBehavior: "close-and-restore-session",
+          startupBehavior: "restore-session",
+          restoreTabsOnLaunch: true,
+          confirmBeforeClosingMultipleTabs: false,
+        });
+      }
+
+      await window.ultraX.closeWindowWithBehavior(discardSession);
+    })();
   };
 
   return (
@@ -239,6 +269,15 @@ export function BrowserShell({ state }: BrowserShellProps) {
         onCreateTab={() => void window.ultraX.createTab()}
         onSwitchTab={(tabId) => void window.ultraX.switchTab(tabId)}
         onCloseTab={(tabId) => void window.ultraX.closeTab(tabId)}
+        onDuplicateTab={(tabId) => void window.ultraX.duplicateTab(tabId)}
+        onPinTab={(tabId, pinned) => void window.ultraX.pinTab(tabId, pinned)}
+        onReorderTab={(tabId, targetTabId) => void window.ultraX.reorderTab(tabId, targetTabId)}
+        onReloadTab={(tabId) =>
+          void window.ultraX.switchTab(tabId).then(() => window.ultraX.reload())
+        }
+        onCloseOtherTabs={(tabId) => void window.ultraX.closeOtherTabs(tabId)}
+        onCloseTabsToRight={(tabId) => void window.ultraX.closeTabsToRight(tabId)}
+        onMoveTabToNewWindow={(tabId) => void window.ultraX.moveTabToNewWindow(tabId)}
         onMinimize={() => void window.ultraX.minimizeWindow()}
         onToggleMaximize={() => void window.ultraX.toggleMaximizeWindow()}
         onCloseWindow={closeWindow}
@@ -314,6 +353,8 @@ export function BrowserShell({ state }: BrowserShellProps) {
         onClearBookmarks={() => void window.ultraX.clearBookmarks()}
         onChooseDownloadFolder={() => void window.ultraX.chooseDownloadFolder()}
         onOpenDownloadsFolder={() => void window.ultraX.openDownloadsFolder()}
+        onChooseNewTabCustomImage={() => window.ultraX.chooseNewTabCustomImage()}
+        onRemoveNewTabCustomImage={() => window.ultraX.removeNewTabCustomImage()}
         onResetSettings={() => void window.ultraX.resetSettings()}
         onOpenShellDevTools={() => void window.ultraX.openShellDevTools()}
         onRelaunchApp={() => void window.ultraX.relaunchApp()}
@@ -406,8 +447,36 @@ export function BrowserShell({ state }: BrowserShellProps) {
         onOpenDownload={(downloadId) => void window.ultraX.openDownload(downloadId)}
         onRevealDownload={(downloadId) => void window.ultraX.revealDownload(downloadId)}
       />
+
+      {closeDialogOpen && (
+        <CloseUltraXDialog
+          tabCount={state.tabs.filter((tab) => !tab.isNewTab).length}
+          hasActiveDownloads={state.downloads.some((download) => download.state === "progressing")}
+          restoreTabsNextClose={restoreTabsNextClose}
+          closeBehavior={state.settings.closeBehavior}
+          onRestoreTabsChange={setRestoreTabsNextClose}
+          onCancel={() => setCloseDialogOpen(false)}
+          onConfirm={confirmCloseWindow}
+          onOpenSettings={() => {
+            setCloseDialogOpen(false);
+            openSettings("tabs");
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function shouldShowCloseDialog(state: BrowserState): boolean {
+  if (state.downloads.some((download) => download.state === "progressing")) {
+    return true;
+  }
+
+  if (state.settings.closeBehavior !== "ask-before-closing-multiple-tabs") {
+    return false;
+  }
+
+  return state.tabs.filter((tab) => !tab.isNewTab).length > 1;
 }
 
 function isExtensionSidebarCloseAction(result: unknown, extensionId: string): boolean {
@@ -451,5 +520,101 @@ function ErrorSurface({
         </div>
       </div>
     </main>
+  );
+}
+
+function CloseUltraXDialog({
+  tabCount,
+  hasActiveDownloads,
+  restoreTabsNextClose,
+  closeBehavior,
+  onRestoreTabsChange,
+  onCancel,
+  onConfirm,
+  onOpenSettings,
+}: {
+  tabCount: number;
+  hasActiveDownloads: boolean;
+  restoreTabsNextClose: boolean;
+  closeBehavior: BrowserState["settings"]["closeBehavior"];
+  onRestoreTabsChange: (checked: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onOpenSettings: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCancel();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
+  const title = hasActiveDownloads ? "Close while downloads are active?" : "Close UltraX?";
+  const detail = hasActiveDownloads
+    ? "UltraX has active downloads. Closing now may interrupt them depending on the site and connection."
+    : restoreTabsNextClose
+      ? `${tabCount} tabs will be saved and restored the next time UltraX opens.`
+      : `${tabCount} tabs will be closed and the next launch will start with a clean New Tab.`;
+
+  return (
+    <div className="fixed inset-0 z-[90] grid place-items-center bg-background/54 p-8 backdrop-blur-md">
+      <section
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="close-ultrax-title"
+        aria-describedby="close-ultrax-detail"
+        className="settings-modal no-drag w-full max-w-md rounded-3xl border border-border/70 bg-popover/96 p-5 text-foreground shadow-2xl shadow-black/55 backdrop-blur-2xl"
+      >
+        <div className="flex items-start gap-4">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-primary/16 text-primary">
+            <ShieldCheck aria-hidden="true" className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <h2 id="close-ultrax-title" className="text-base font-semibold">
+              {title}
+            </h2>
+            <p id="close-ultrax-detail" className="mt-2 text-sm leading-6 text-muted-foreground">
+              {detail}
+            </p>
+          </div>
+        </div>
+
+        {closeBehavior !== "ask-before-closing-multiple-tabs" && (
+          <label className="mt-5 flex items-center gap-3 rounded-2xl border border-border/60 bg-background/45 px-3 py-3 text-sm">
+            <input
+              type="checkbox"
+              checked={restoreTabsNextClose}
+              onChange={(event) => onRestoreTabsChange(event.target.checked)}
+              className="size-4 accent-primary"
+            />
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium">Always restore tabs next time</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Saves this window session before UltraX closes.
+              </span>
+            </span>
+          </label>
+        )}
+
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+          <Button type="button" variant="ghost" onClick={onOpenSettings} className="rounded-xl">
+            Settings
+          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" onClick={onCancel} className="rounded-xl">
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={onConfirm} className="rounded-xl">
+              Close UltraX
+            </Button>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }

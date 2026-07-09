@@ -19,11 +19,45 @@ export type SearchSuggestionSettings = {
 
 export type StartupBehavior = "new-tab" | "restore-session" | "specific-pages";
 
+export type CloseBehavior =
+  | "ask-before-closing-multiple-tabs"
+  | "close-and-restore-session"
+  | "close-and-discard-session";
+
 export type HomeBehavior = "new-tab" | "custom-url";
 
-export type ToolbarDensity = "compact" | "comfortable";
+export type InterfaceDensity = "compact" | "comfortable" | "spacious";
+
+export type ToolbarDensity = InterfaceDensity;
 
 export type AccentColor = "blue" | "purple" | "cyan" | "green" | "rose" | "orange";
+
+export type CornerRadius = "subtle" | "rounded" | "ultra-rounded";
+
+export type BlurIntensity = "low" | "balanced" | "high";
+
+export type PanelTransparency = "low" | "balanced" | "high";
+
+export type AnimationLevel = "minimal" | "balanced" | "expressive";
+
+export type NewTabBackground =
+  | "ultrax-wave"
+  | "aurora"
+  | "gradient-mesh"
+  | "minimal-dark"
+  | "solid-color"
+  | "custom-image";
+
+export type ShaderPreset =
+  | "ultrax-wave"
+  | "blue-nebula"
+  | "purple-flow"
+  | "aurora-lines"
+  | "calm-grid";
+
+export type ShaderIntensity = "low" | "balanced" | "high";
+
+export type ShaderSpeed = "slow" | "normal" | "fast";
 
 export type HistoryRetention = "forever" | "30-days" | "7-days";
 
@@ -217,6 +251,7 @@ export type BrowserTab = {
   canGoBack: boolean;
   canGoForward: boolean;
   isNewTab: boolean;
+  isPinned?: boolean;
   error?: string;
 };
 
@@ -255,12 +290,23 @@ export type BrowserSettings = {
   addressBarSearch: boolean;
   startupBehavior: StartupBehavior;
   startupPages: string[];
+  closeBehavior: CloseBehavior;
   homeBehavior: HomeBehavior;
   homeUrl: string;
   theme: ThemeMode;
   glassMode: boolean;
   accentColor: AccentColor;
   toolbarDensity: ToolbarDensity;
+  cornerRadius: CornerRadius;
+  blurIntensity: BlurIntensity;
+  panelTransparency: PanelTransparency;
+  animationLevel: AnimationLevel;
+  newTabBackground: NewTabBackground;
+  newTabSolidColor: string;
+  newTabCustomImagePath: string;
+  shaderPreset: ShaderPreset;
+  shaderIntensity: ShaderIntensity;
+  shaderSpeed: ShaderSpeed;
   showBookmarksBar: boolean;
   showHomeButton: boolean;
   shaderEnabled: boolean;

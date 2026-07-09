@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 type ShaderAnimationProps = {
   className?: string;
   disabled?: boolean;
+  preset?: "ultrax-wave" | "blue-nebula" | "purple-flow" | "aurora-lines" | "calm-grid";
+  speed?: "slow" | "normal" | "fast";
 };
 
 type SceneRefs = {
@@ -14,7 +16,12 @@ type SceneRefs = {
   animationId: number;
 };
 
-export function ShaderAnimation({ className, disabled = false }: ShaderAnimationProps) {
+export function ShaderAnimation({
+  className,
+  disabled = false,
+  preset = "ultrax-wave",
+  speed = "normal",
+}: ShaderAnimationProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SceneRefs | null>(null);
 
@@ -30,6 +37,7 @@ export function ShaderAnimation({ className, disabled = false }: ShaderAnimation
       }
     `;
 
+    const presetColor = getPresetColor(preset);
     const fragmentShader = `
       #define TWO_PI 6.2831853072
       #define PI 3.14159265359
@@ -54,7 +62,7 @@ export function ShaderAnimation({ className, disabled = false }: ShaderAnimation
           }
         }
 
-        vec3 tuned = vec3(color.r * 0.55, color.g * 0.85, color.b * 1.2);
+        vec3 tuned = vec3(color.r * ${presetColor[0]}, color.g * ${presetColor[1]}, color.b * ${presetColor[2]});
         gl_FragColor = vec4(tuned, 1.0);
       }
     `;
@@ -103,7 +111,7 @@ export function ShaderAnimation({ className, disabled = false }: ShaderAnimation
     resize();
 
     const animate = () => {
-      uniforms.time.value += 0.045;
+      uniforms.time.value += getSpeedStep(speed);
       renderer.render(scene, camera);
       sceneRef.current!.animationId = requestAnimationFrame(animate);
     };
@@ -129,7 +137,7 @@ export function ShaderAnimation({ className, disabled = false }: ShaderAnimation
         sceneRef.current = null;
       }
     };
-  }, [disabled]);
+  }, [disabled, preset, speed]);
 
   return (
     <div
@@ -143,4 +151,26 @@ export function ShaderAnimation({ className, disabled = false }: ShaderAnimation
       )}
     />
   );
+}
+
+function getPresetColor(
+  preset: NonNullable<ShaderAnimationProps["preset"]>,
+): [number, number, number] {
+  const colors: Record<NonNullable<ShaderAnimationProps["preset"]>, [number, number, number]> = {
+    "ultrax-wave": [0.55, 0.85, 1.2],
+    "blue-nebula": [0.38, 0.78, 1.45],
+    "purple-flow": [0.86, 0.48, 1.35],
+    "aurora-lines": [0.42, 1.25, 0.95],
+    "calm-grid": [0.62, 0.92, 1.02],
+  };
+  return colors[preset];
+}
+
+function getSpeedStep(speed: NonNullable<ShaderAnimationProps["speed"]>): number {
+  const steps: Record<NonNullable<ShaderAnimationProps["speed"]>, number> = {
+    slow: 0.026,
+    normal: 0.045,
+    fast: 0.072,
+  };
+  return steps[speed];
 }
