@@ -1,5 +1,16 @@
 # UltraX Browser Changelog
 
+## 1.1.5 - Tab Context Menu Layering Patch
+
+### Fixed
+
+- Rendered the tab context menu on the top-level overlay layer so it no longer appears behind the address bar or other browser chrome.
+- Preserved every tab context-menu action and the existing UltraX styling while escaping the tab strip's backdrop-filter stacking context.
+
+### Tests
+
+- Added E2E coverage for the real address-bar overlap and verified that context-menu actions remain clickable.
+
 ## 1.1.4 - Chrome Overlay Layering Patch
 
 ### Fixed

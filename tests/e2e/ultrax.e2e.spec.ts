@@ -304,7 +304,7 @@ test("settings persist across an app restart", async () => {
   }
 });
 
-test("fresh settings use v1.1.4 search, suggestions, home, and permission defaults", async () => {
+test("fresh settings use v1.1.5 search, suggestions, home, and permission defaults", async () => {
   const app = await launchUltraX();
 
   try {
@@ -357,6 +357,60 @@ test("tab hover preview appears and disappears", async () => {
   }
 });
 
+test("tab context menu renders above the address bar", async () => {
+  const app = await launchUltraX();
+
+  try {
+    await app.page.getByTestId("browser-tab").first().click({ button: "right" });
+    const menu = app.page.getByRole("menu");
+    await expect(menu).toBeVisible();
+
+    const layering = await app.page.evaluate(() => {
+      const contextMenu = document.querySelector<HTMLElement>('[role="menu"]');
+      const addressInput = document.querySelector<HTMLElement>(
+        'input[placeholder="Search or enter address"]',
+      );
+
+      if (!contextMenu || !addressInput) {
+        return { overlapsAddressBar: false, contextMenuIsTopmost: false };
+      }
+
+      const menuRect = contextMenu.getBoundingClientRect();
+      const addressRect = addressInput.getBoundingClientRect();
+      const overlapLeft = Math.max(menuRect.left, addressRect.left);
+      const overlapRight = Math.min(menuRect.right, addressRect.right);
+      const overlapTop = Math.max(menuRect.top, addressRect.top);
+      const overlapBottom = Math.min(menuRect.bottom, addressRect.bottom);
+      const overlapsAddressBar = overlapRight > overlapLeft && overlapBottom > overlapTop;
+
+      if (!overlapsAddressBar) {
+        return { overlapsAddressBar, contextMenuIsTopmost: false };
+      }
+
+      const topmostElement = document.elementFromPoint(
+        overlapLeft + (overlapRight - overlapLeft) / 2,
+        overlapTop + (overlapBottom - overlapTop) / 2,
+      );
+
+      return {
+        overlapsAddressBar,
+        contextMenuIsTopmost: Boolean(
+          topmostElement && contextMenu.contains(topmostElement),
+        ),
+      };
+    });
+
+    expect(layering.overlapsAddressBar).toBe(true);
+    expect(layering.contextMenuIsTopmost).toBe(true);
+
+    await menu.getByRole("menuitem", { name: "Duplicate" }).click();
+    await waitForTabCount(app.page, 2);
+    await expect(menu).toBeHidden();
+  } finally {
+    await closeUltraX(app);
+  }
+});
+
 test("extensions workspace is recreated on startup and when opening Extensions settings", async () => {
   const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "ultrax-e2e-extensions-"));
   const app = await launchUltraX(userDataDir);
@@ -391,7 +445,7 @@ test("updates page opens and renders current version controls", async () => {
     await app.page.getByTestId("settings-category-updates").click();
 
     await expect(app.page.getByText("Current version")).toBeVisible();
-    await expect(app.page.getByText(/UltraX Browser 1\.1\.4/)).toBeVisible();
+    await expect(app.page.getByText(/UltraX Browser 1\.1\.5/)).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Check for Updates" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Download Update" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Install and Restart" })).toBeVisible();

@@ -23,6 +23,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -652,61 +653,64 @@ export function TabStrip({
         </Button>
       </div>
 
-      {menu && menuTab && (
-        <div
-          className="no-drag fixed z-[70] w-56 overflow-hidden rounded-2xl border border-border/70 bg-popover/96 p-1.5 text-foreground shadow-2xl shadow-black/45 backdrop-blur-2xl"
-          style={{ left: menu.x, top: menu.y }}
-          role="menu"
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <TabMenuItem
-            icon={<Plus aria-hidden="true" />}
-            label="New Tab"
-            onClick={() => runMenuAction(onCreateTab)}
-          />
-          <TabMenuItem
-            icon={<RefreshCw aria-hidden="true" />}
-            label="Reload"
-            onClick={() => runMenuAction(() => onReloadTab(menuTab.id))}
-          />
-          <TabMenuItem
-            icon={<Copy aria-hidden="true" />}
-            label="Duplicate"
-            onClick={() => runMenuAction(() => onDuplicateTab(menuTab.id))}
-          />
-          <TabMenuItem
-            icon={menuTab.isPinned ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
-            label={menuTab.isPinned ? "Unpin Tab" : "Pin Tab"}
-            onClick={() => runMenuAction(() => onPinTab(menuTab.id, !menuTab.isPinned))}
-          />
-          <TabMenuItem
-            icon={menuTab.isMuted ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
-            label={menuTab.isMuted ? "Unmute Tab" : "Mute Tab"}
-            onClick={() => runMenuAction(() => onToggleTabMuted(menuTab.id))}
-          />
-          <div className="my-1 h-px bg-border/70" />
-          <TabMenuItem
-            icon={<X aria-hidden="true" />}
-            label="Close Tab"
-            onClick={() => runMenuAction(() => onCloseTab(menuTab.id))}
-          />
-          <TabMenuItem
-            icon={<X aria-hidden="true" />}
-            label="Close Other Tabs"
-            onClick={() => runMenuAction(() => onCloseOtherTabs(menuTab.id))}
-          />
-          <TabMenuItem
-            icon={<X aria-hidden="true" />}
-            label="Close Tabs to the Right"
-            onClick={() => runMenuAction(() => onCloseTabsToRight(menuTab.id))}
-          />
-          <TabMenuItem
-            icon={<PanelTopOpen aria-hidden="true" />}
-            label="Move Tab to New Window"
-            onClick={() => runMenuAction(() => onMoveTabToNewWindow(menuTab.id))}
-          />
-        </div>
-      )}
+      {menu &&
+        menuTab &&
+        createPortal(
+          <div
+            className="no-drag fixed z-[100] w-56 overflow-hidden rounded-2xl border border-border/70 bg-popover/96 p-1.5 text-foreground shadow-2xl shadow-black/45 backdrop-blur-2xl"
+            style={{ left: menu.x, top: menu.y }}
+            role="menu"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <TabMenuItem
+              icon={<Plus aria-hidden="true" />}
+              label="New Tab"
+              onClick={() => runMenuAction(onCreateTab)}
+            />
+            <TabMenuItem
+              icon={<RefreshCw aria-hidden="true" />}
+              label="Reload"
+              onClick={() => runMenuAction(() => onReloadTab(menuTab.id))}
+            />
+            <TabMenuItem
+              icon={<Copy aria-hidden="true" />}
+              label="Duplicate"
+              onClick={() => runMenuAction(() => onDuplicateTab(menuTab.id))}
+            />
+            <TabMenuItem
+              icon={menuTab.isPinned ? <PinOff aria-hidden="true" /> : <Pin aria-hidden="true" />}
+              label={menuTab.isPinned ? "Unpin Tab" : "Pin Tab"}
+              onClick={() => runMenuAction(() => onPinTab(menuTab.id, !menuTab.isPinned))}
+            />
+            <TabMenuItem
+              icon={menuTab.isMuted ? <Volume2 aria-hidden="true" /> : <VolumeX aria-hidden="true" />}
+              label={menuTab.isMuted ? "Unmute Tab" : "Mute Tab"}
+              onClick={() => runMenuAction(() => onToggleTabMuted(menuTab.id))}
+            />
+            <div className="my-1 h-px bg-border/70" />
+            <TabMenuItem
+              icon={<X aria-hidden="true" />}
+              label="Close Tab"
+              onClick={() => runMenuAction(() => onCloseTab(menuTab.id))}
+            />
+            <TabMenuItem
+              icon={<X aria-hidden="true" />}
+              label="Close Other Tabs"
+              onClick={() => runMenuAction(() => onCloseOtherTabs(menuTab.id))}
+            />
+            <TabMenuItem
+              icon={<X aria-hidden="true" />}
+              label="Close Tabs to the Right"
+              onClick={() => runMenuAction(() => onCloseTabsToRight(menuTab.id))}
+            />
+            <TabMenuItem
+              icon={<PanelTopOpen aria-hidden="true" />}
+              label="Move Tab to New Window"
+              onClick={() => runMenuAction(() => onMoveTabToNewWindow(menuTab.id))}
+            />
+          </div>,
+          document.body,
+        )}
 
       {dragState?.isDragging && ghostTab && (
         <div

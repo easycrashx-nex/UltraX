@@ -573,7 +573,7 @@ export function SettingsPage({
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold">UltraX Settings</h1>
             <p className="truncate text-xs text-muted-foreground">
-              v1.1.4 overlay polish, tab previews, privacy, security, accessibility, and permissions.
+              v1.1.5 tab-menu layering, overlay polish, privacy, security, accessibility, and permissions.
             </p>
           </div>
         </div>
@@ -817,7 +817,7 @@ function CategoryContent({
     generatedAt: new Date().toISOString(),
     app: {
       name: runtimeInfo?.appName ?? "UltraX",
-      version: runtimeInfo?.appVersion ?? "1.1.4",
+      version: runtimeInfo?.appVersion ?? "1.1.5",
       electron: runtimeInfo?.electronVersion ?? "Unknown",
       chromium: runtimeInfo?.chromiumVersion ?? "Unknown",
       node: runtimeInfo?.nodeVersion ?? "Unknown",
@@ -1029,7 +1029,7 @@ function CategoryContent({
         JSON.stringify(
           {
             exportedAt: new Date().toISOString(),
-            appVersion: runtimeInfo?.appVersion ?? "1.1.4",
+            appVersion: runtimeInfo?.appVersion ?? "1.1.5",
             settings,
           },
           null,
@@ -1177,14 +1177,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset UltraX settings"
-              detail="Restore preferences to the v1.1.4 defaults."
+              detail="Restore preferences to the v1.1.5 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset all UltraX settings?",
-                  "This restores preferences to the v1.1.4 defaults.",
+                  "This restores preferences to the v1.1.5 defaults.",
                   "Reset",
                   onResetSettings,
                 )
@@ -1193,7 +1193,7 @@ function CategoryContent({
           </SettingSection>
           <StatusCard
             title="Release status"
-            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.4"} is running in ${
+            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.5"} is running in ${
               runtimeInfo?.buildType ?? "development"
             } mode.`}
             icon={<Sparkles aria-hidden="true" />}
@@ -1930,14 +1930,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset security settings"
-              detail="Restores only security preferences to the v1.1.4 defaults."
+              detail="Restores only security preferences to the v1.1.5 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset security settings?",
-                  "Only Security page preferences will return to the v1.1.4 defaults.",
+                  "Only Security page preferences will return to the v1.1.5 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultSecuritySettings),
                 )
@@ -2060,7 +2060,7 @@ function CategoryContent({
             )}
           </SettingSection>
 
-          <SettingSection title="Runtime Coverage" detail="What is enforced in v1.1.4 and what stays under Chromium defaults.">
+          <SettingSection title="Runtime Coverage" detail="What is enforced in v1.1.5 and what stays under Chromium defaults.">
             <InfoRow label="Electron permission prompts" detail="Camera, microphone, location, notifications, and clipboard use UltraX Allow/Block prompts with optional remembering." />
             <InfoRow label="Downloads" detail="Download permission defaults are enforced before the file is saved." />
             <InfoRow label="Pop-ups" detail="Unsafe windows are denied. Safe window-open requests become UltraX tabs." />
@@ -2158,7 +2158,7 @@ function CategoryContent({
             <ComingSoonRow label="Add profile" detail="Separate profile storage is planned for v1.1." />
             <ComingSoonRow label="Guest mode" detail="Requires a separate temporary session partition." />
           </SettingSection>
-          <EmptyFeature title="Profiles are coming next" detail="v1.1.4 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
+          <EmptyFeature title="Profiles are coming next" detail="v1.1.5 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
         </>
       );
 
@@ -2184,7 +2184,7 @@ function CategoryContent({
             <InfoRow label="What extensions are" detail="Browser-level add-ons with scoped permissions for tabs, sidebar, and local browser features." />
             <ComingSoonRow label="Plugin marketplace" detail="Requires signed native module loading and a separate trust boundary." />
           </SettingSection>
-          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.1.4 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
+          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.1.5 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
         </>
       );
 
@@ -2784,7 +2784,7 @@ function CategoryContent({
           )}
 
           <SettingSection title="Diagnostics" detail="Local performance information safe to copy or export.">
-            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.4"}`} />
+            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.5"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2822,14 +2822,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset performance settings"
-              detail="Restores only this Performance page to v1.1.4 defaults."
+              detail="Restores only this Performance page to v1.1.5 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset performance settings?",
-                  "Only the Performance page settings will return to the v1.1.4 defaults.",
+                  "Only the Performance page settings will return to the v1.1.5 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultPerformanceSettings),
                 )
@@ -2912,7 +2912,7 @@ function CategoryContent({
                 ["extra-large", "Extra Large"],
               ]}
             />
-            <InfoRow label="UI Scale" detail="Planned after responsive layout testing; Text Size is safe in v1.1.4." />
+            <InfoRow label="UI Scale" detail="Planned after responsive layout testing; Text Size is safe in v1.1.5." />
             <RangeRow
               label="Default page zoom"
               detail={`${Math.round(settings.pageZoom * 100)}% for web pages.`}
@@ -3009,7 +3009,7 @@ function CategoryContent({
             onAction={() =>
               requestConfirm(
                 "Reset all UltraX settings?",
-                "This restores preferences to the v1.1.4 defaults.",
+                "This restores preferences to the v1.1.5 defaults.",
                 "Reset",
                 onResetSettings,
               )
@@ -3022,7 +3022,7 @@ function CategoryContent({
     case "updates": {
       const update = updateStatus ?? {
         status: "idle",
-        currentVersion: runtimeInfo?.appVersion ?? "1.1.4",
+        currentVersion: runtimeInfo?.appVersion ?? "1.1.5",
         channel: settings.updates.channel,
         updateAvailable: false,
         lastCheckedAt: settings.updates.lastCheckedAt,
@@ -3187,7 +3187,7 @@ function CategoryContent({
       return (
         <>
           <SettingSection title="About UltraX" detail="Build and engine information.">
-            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.4"}`} />
+            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.5"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -3202,7 +3202,7 @@ function CategoryContent({
             <InfoRow label="License" detail="Project-local MVP placeholder." />
           </SettingSection>
           <StatusCard
-            title="UltraX Browser v1.1.4"
+            title="UltraX Browser v1.1.5"
             detail="Polished overlay layering while keeping the expanded Settings, privacy, security, accessibility, permissions, and Google defaults."
             icon={<Sparkles aria-hidden="true" />}
           />
