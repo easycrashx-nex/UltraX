@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UltraX Notes</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #080c14;
+        color: #f5f7fb;
+      }
+
+      body {
+        margin: 0;
+        padding: 18px;
+        background: linear-gradient(180deg, #111827, #070a11 74%);
+      }
+
+      main {
+        display: grid;
+        gap: 14px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: #9ca6b8;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      textarea {
+        min-height: 260px;
+        resize: vertical;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 14px;
+        background: rgba(12, 18, 30, 0.84);
+        color: #f8fafc;
+        padding: 14px;
+        font: inherit;
+        outline: none;
+      }
+
+      textarea:focus {
+        border-color: rgba(88, 146, 255, 0.82);
+        box-shadow: 0 0 0 4px rgba(66, 133, 244, 0.18);
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        height: 34px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 10px;
+        background: rgba(45, 100, 255, 0.92);
+        color: white;
+        padding: 0 13px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        background: rgba(15, 23, 42, 0.82);
+        color: #dbe3f0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div>
+        <h1>UltraX Notes</h1>
+        <p>Private notes stored in this extension only.</p>
+      </div>
+      <textarea id="notes" spellcheck="true" aria-label="Notes"></textarea>
+      <div class="actions">
+        <button id="save" type="button">Save</button>
+        <button id="clear" type="button" class="secondary">Clear</button>
+      </div>
+      <p id="status">Loading...</p>
+    </main>
+    <script src="index.js"></script>
+  </body>
+</html>

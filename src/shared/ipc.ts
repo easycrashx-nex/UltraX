@@ -1,0 +1,67 @@
+export const IPC = {
+  browserState: "browser:state",
+  focusAddressBar: "browser:focus-address-bar",
+
+  getState: "browser:get-state",
+  setViewInsets: "browser:set-view-insets",
+
+  createTab: "tabs:create",
+  closeTab: "tabs:close",
+  switchTab: "tabs:switch",
+  navigate: "tabs:navigate",
+  goHome: "tabs:home",
+  goBack: "tabs:back",
+  goForward: "tabs:forward",
+  reload: "tabs:reload",
+  stopLoading: "tabs:stop",
+  hardReload: "tabs:hard-reload",
+  nextTab: "tabs:next",
+  previousTab: "tabs:previous",
+
+  toggleBookmark: "bookmarks:toggle-current",
+  removeBookmark: "bookmarks:remove",
+  openBookmark: "bookmarks:open",
+
+  clearHistory: "history:clear",
+  openHistoryEntry: "history:open",
+
+  updateSettings: "settings:update",
+  clearBrowserData: "settings:clear-browser-data",
+  clearNetworkCache: "settings:clear-network-cache",
+  resetSettings: "settings:reset",
+  getRuntimeInfo: "settings:get-runtime-info",
+  openShellDevTools: "settings:open-shell-devtools",
+  relaunchApp: "settings:relaunch-app",
+
+  updateStatusChanged: "updates:status-changed",
+  getUpdateStatus: "updates:get-status",
+  checkForUpdates: "updates:check",
+  downloadUpdate: "updates:download",
+  installUpdate: "updates:install",
+  openReleasesPage: "updates:open-releases-page",
+
+  openDownload: "downloads:open",
+  revealDownload: "downloads:reveal",
+  chooseDownloadFolder: "downloads:choose-folder",
+  openDownloadsFolder: "downloads:open-folder",
+  clearDownloads: "downloads:clear",
+
+  clearBookmarks: "bookmarks:clear",
+
+  loadUnpackedExtension: "extensions:load-unpacked",
+  validateUnpackedExtension: "extensions:validate-unpacked",
+  setExtensionEnabled: "extensions:set-enabled",
+  removeExtension: "extensions:remove",
+  reloadExtensions: "extensions:reload",
+  openExtensionsFolder: "extensions:open-folder",
+  listExtensionStore: "extensions:store:list",
+  installStoreExtension: "extensions:store:install",
+  openExtensionPanel: "extensions:panel:open",
+  invokeExtensionApi: "extensions:api:invoke",
+  logExtensionRuntimeMessage: "extensions:runtime:log",
+  clearExtensionErrors: "extensions:errors:clear",
+
+  minimizeWindow: "window:minimize",
+  toggleMaximizeWindow: "window:toggle-maximize",
+  closeWindow: "window:close",
+} as const;

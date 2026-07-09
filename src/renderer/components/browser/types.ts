@@ -1,0 +1,26 @@
+export type PanelId = "bookmarks" | "history" | "downloads" | null;
+
+export type SettingsCategoryId =
+  | "general"
+  | "appearance"
+  | "browser"
+  | "start"
+  | "home"
+  | "search"
+  | "tabs"
+  | "privacy"
+  | "security"
+  | "permissions"
+  | "downloads"
+  | "bookmarks"
+  | "history"
+  | "profiles"
+  | "ai"
+  | "plugins"
+  | "extensions"
+  | "performance"
+  | "accessibility"
+  | "shortcuts"
+  | "advanced"
+  | "updates"
+  | "about";

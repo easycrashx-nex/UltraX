@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="UltraX app icon">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="18" x2="232" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b1224"/>
+      <stop offset="1" stop-color="#05070d"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="66" y1="56" x2="194" y2="202" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#61d8ff"/>
+      <stop offset="0.5" stop-color="#4f7dff"/>
+      <stop offset="1" stop-color="#a66bff"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <path d="M54 191 108 128 56 65h42l31 40 31-40h41l-52 63 54 63h-43l-33-42-32 42H54Z" fill="url(#mark)"/>
+  <path d="M50 193 110 125" stroke="#ffffff" stroke-opacity=".16" stroke-width="10" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,12 @@
+{
+  "id": "ultrax-notes-sidebar",
+  "name": "UltraX Notes",
+  "version": "1.0.0",
+  "description": "Save small notes in an UltraX sidebar panel.",
+  "author": "UltraX",
+  "icon": "icon.png",
+  "main": "index.js",
+  "panel": "panel.html",
+  "settings": "settings.html",
+  "permissions": ["storage", "sidebar"]
+}

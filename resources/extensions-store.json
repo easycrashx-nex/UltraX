@@ -1,0 +1,24 @@
+[
+  {
+    "id": "ultrax-page-info",
+    "name": "UltraX Page Info",
+    "version": "1.0.0",
+    "description": "Shows basic information about the active tab in a sidebar panel.",
+    "author": "UltraX",
+    "category": "Productivity",
+    "permissions": ["tabs", "activeTab", "sidebar"],
+    "source": "builtin",
+    "installType": "builtin"
+  },
+  {
+    "id": "ultrax-notes-sidebar",
+    "name": "UltraX Notes",
+    "version": "1.0.0",
+    "description": "Save small notes in an UltraX sidebar panel.",
+    "author": "UltraX",
+    "category": "Productivity",
+    "permissions": ["storage", "sidebar"],
+    "source": "builtin",
+    "installType": "builtin"
+  }
+]

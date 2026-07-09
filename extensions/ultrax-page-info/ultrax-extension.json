@@ -1,0 +1,11 @@
+{
+  "id": "ultrax-page-info",
+  "name": "UltraX Page Info",
+  "version": "1.0.0",
+  "description": "Shows basic information about the active tab in a sidebar panel.",
+  "author": "UltraX",
+  "icon": "icon.png",
+  "main": "index.js",
+  "panel": "panel.html",
+  "permissions": ["tabs", "activeTab", "sidebar"]
+}

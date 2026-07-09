@@ -1,0 +1,116 @@
+{
+  "name": "ultrax",
+  "version": "1.0.6",
+  "private": true,
+  "productName": "UltraX",
+  "description": "UltraX custom Electron browser MVP with React, TypeScript, Tailwind CSS, and WebContentsView tabs.",
+  "author": "UltraX",
+  "license": "UNLICENSED",
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite --host 127.0.0.1",
+    "dev:electron": "cross-env-shell ULTRAX_DEV_SERVER=1 \"wait-on http://127.0.0.1:5173 && tsc -p tsconfig.electron.json && electron .\"",
+    "typecheck": "tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "build": "tsc -p tsconfig.electron.json && tsc -p tsconfig.renderer.json --noEmit && vite build",
+    "start": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run dist:win",
+    "dist:win": "npm run build && electron-builder --win nsis portable --x64",
+    "dist:win:arm64": "npm run build && electron-builder --win nsis portable --arm64",
+    "release:win": "npm run build && electron-builder --win nsis portable --x64 --publish always"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.3.1",
+    "three": "^0.178.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/node": "^22.13.14",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/three": "^0.185.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "cross-env": "^10.1.0",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.4",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.ultrax.browser",
+    "productName": "UltraX",
+    "asar": true,
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "extensions/**/*",
+      "docs/**/*",
+      "resources/**/*",
+      "README.md",
+      "CHANGELOG.md",
+      "LICENSE",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "extensions",
+        "to": "extensions"
+      },
+      {
+        "from": "docs",
+        "to": "docs"
+      },
+      {
+        "from": "resources/extensions-store.json",
+        "to": "extensions-store.json"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "UltraX",
+      "uninstallDisplayName": "UltraX"
+    },
+    "portable": {
+      "artifactName": "UltraX ${version} Portable ${arch}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    ],
+    "artifactName": "UltraX Setup ${version} ${arch}.${ext}"
+  }
+}
