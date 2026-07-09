@@ -20,8 +20,8 @@
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run dist:win",
-    "dist:win": "npm run build && electron-builder --win nsis portable --x64",
-    "dist:win:arm64": "npm run build && electron-builder --win nsis portable --arm64",
+    "dist:win": "npm run build && electron-builder --win nsis portable --x64 --publish never",
+    "dist:win:arm64": "npm run build && electron-builder --win nsis portable --arm64 --publish never",
     "release:win": "npm run dist:win"
   },
   "dependencies": {
