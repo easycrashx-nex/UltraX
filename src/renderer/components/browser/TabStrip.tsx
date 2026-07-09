@@ -79,11 +79,18 @@ type TabDragState = {
 
 const DRAG_START_THRESHOLD = 5;
 const DROP_CANCEL_Y_MARGIN = 42;
+const DEFAULT_BROWSER_CHROME_BOTTOM = 108;
+const TAB_PREVIEW_CHROME_GAP = 8;
 
 function getTabAccessibleLabel(tab: BrowserTab) {
   const state = tab.isMuted ? "Muted" : tab.isAudible ? "Playing audio" : null;
   const title = tab.title || "Untitled tab";
   return [state, tab.isPinned ? "Pinned" : null, title].filter(Boolean).join(" - ");
+}
+
+function getBrowserChromeBottom() {
+  const contentStartElement = document.querySelector<HTMLElement>(".browser-content-start");
+  return contentStartElement?.getBoundingClientRect().top ?? DEFAULT_BROWSER_CHROME_BOTTOM;
 }
 
 export function TabStrip({
@@ -411,10 +418,11 @@ export function TabStrip({
     clearHoverPreviewTimer();
     hoverPreviewTimerRef.current = window.setTimeout(() => {
       const rect = element.getBoundingClientRect();
+      const chromeBottom = getBrowserChromeBottom();
       setPreview({
         tabId: tab.id,
         x: Math.min(Math.max(10, rect.left), window.innerWidth - 310),
-        y: rect.bottom + 8,
+        y: Math.max(rect.bottom + TAB_PREVIEW_CHROME_GAP, chromeBottom + TAB_PREVIEW_CHROME_GAP),
       });
     }, reducedMotion ? 520 : 360);
   };

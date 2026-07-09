@@ -1,5 +1,16 @@
 # UltraX Browser Changelog
 
+## 1.1.4 - Chrome Overlay Layering Patch
+
+### Fixed
+
+- Moved tab hover previews below the full browser chrome so they no longer sit behind or collide with the address/search bar.
+- Raised address-bar suggestion dropdown layering above tab preview overlays.
+
+### Tests
+
+- Added E2E coverage to ensure tab hover previews render below the browser chrome content boundary.
+
 ## 1.1.3 - Tab Tooltip Patch
 
 ### Fixed
