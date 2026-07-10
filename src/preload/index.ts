@@ -21,6 +21,18 @@ import type {
   UpdateStatusSnapshot,
   ViewInsets,
 } from "../shared/types";
+import type {
+  PasswordBackupResult,
+  PasswordFillRequest,
+  PasswordFillResult,
+  PasswordGeneratorSettings,
+  PasswordHealthSummary,
+  PasswordImportSummary,
+  PasswordManagerStatus,
+  PasswordVaultItemDisplay,
+  PasswordVaultItemInput,
+  PasswordVaultItemUpdate,
+} from "../shared/password-manager";
 
 const IPC = {
   browserState: "browser:state",
@@ -93,6 +105,26 @@ const IPC = {
   invokeExtensionApi: "extensions:api:invoke",
   logExtensionRuntimeMessage: "extensions:runtime:log",
   clearExtensionErrors: "extensions:errors:clear",
+  passwordManagerStatusChanged: "password-manager:status-changed",
+  passwordManagerGetStatus: "password-manager:get-status",
+  passwordManagerSetup: "password-manager:setup",
+  passwordManagerUnlock: "password-manager:unlock",
+  passwordManagerUnlockWithOs: "password-manager:unlock-with-os",
+  passwordManagerLock: "password-manager:lock",
+  passwordManagerList: "password-manager:list",
+  passwordManagerCreate: "password-manager:create",
+  passwordManagerUpdate: "password-manager:update",
+  passwordManagerDelete: "password-manager:delete",
+  passwordManagerDuplicate: "password-manager:duplicate",
+  passwordManagerGenerate: "password-manager:generate",
+  passwordManagerCopyField: "password-manager:copy-field",
+  passwordManagerFill: "password-manager:fill",
+  passwordManagerHealth: "password-manager:health",
+  passwordManagerImportCsv: "password-manager:import-csv",
+  passwordManagerExportBackup: "password-manager:export-backup",
+  passwordManagerImportBackup: "password-manager:import-backup",
+  passwordManagerChangeMaster: "password-manager:change-master",
+  passwordManagerDeleteVault: "password-manager:delete-vault",
   minimizeWindow: "window:minimize",
   toggleMaximizeWindow: "window:toggle-maximize",
   closeWindow: "window:close",
@@ -204,6 +236,45 @@ const api: UltraXApi = {
   ) => invoke<void>(IPC.logExtensionRuntimeMessage, extensionId, level, message),
   clearExtensionErrors: (extensionId?: string) =>
     invoke<void>(IPC.clearExtensionErrors, extensionId),
+
+  passwordManager: {
+    getStatus: () => invoke<PasswordManagerStatus>(IPC.passwordManagerGetStatus),
+    setup: (masterPassword: string, enableQuickUnlock: boolean) =>
+      invoke<PasswordManagerStatus>(IPC.passwordManagerSetup, masterPassword, enableQuickUnlock),
+    unlock: (masterPassword: string) =>
+      invoke<PasswordManagerStatus>(IPC.passwordManagerUnlock, masterPassword),
+    unlockWithOs: () => invoke<PasswordManagerStatus>(IPC.passwordManagerUnlockWithOs),
+    lock: () => invoke<PasswordManagerStatus>(IPC.passwordManagerLock),
+    list: (query = "") => invoke<PasswordVaultItemDisplay[]>(IPC.passwordManagerList, query),
+    create: (input: PasswordVaultItemInput) =>
+      invoke<PasswordVaultItemDisplay>(IPC.passwordManagerCreate, input),
+    update: (itemId: string, input: PasswordVaultItemUpdate) =>
+      invoke<PasswordVaultItemDisplay>(IPC.passwordManagerUpdate, itemId, input),
+    delete: (itemId: string) => invoke<void>(IPC.passwordManagerDelete, itemId),
+    duplicate: (itemId: string) =>
+      invoke<PasswordVaultItemDisplay>(IPC.passwordManagerDuplicate, itemId),
+    generate: (options: PasswordGeneratorSettings) =>
+      invoke<string>(IPC.passwordManagerGenerate, options),
+    copyField: (itemId: string, field: "username" | "password") =>
+      invoke<void>(IPC.passwordManagerCopyField, itemId, field),
+    fill: (request: PasswordFillRequest) =>
+      invoke<PasswordFillResult>(IPC.passwordManagerFill, request),
+    health: () => invoke<PasswordHealthSummary>(IPC.passwordManagerHealth),
+    importCsv: () => invoke<PasswordImportSummary | null>(IPC.passwordManagerImportCsv),
+    exportBackup: (backupPassword: string) =>
+      invoke<PasswordBackupResult | null>(IPC.passwordManagerExportBackup, backupPassword),
+    importBackup: (backupPassword: string) =>
+      invoke<PasswordImportSummary | null>(IPC.passwordManagerImportBackup, backupPassword),
+    changeMasterPassword: (currentPassword: string, newPassword: string) =>
+      invoke<void>(IPC.passwordManagerChangeMaster, currentPassword, newPassword),
+    deleteVault: (masterPassword: string) =>
+      invoke<void>(IPC.passwordManagerDeleteVault, masterPassword),
+    onStatusChanged: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: PasswordManagerStatus) => callback(status);
+      ipcRenderer.on(IPC.passwordManagerStatusChanged, listener);
+      return () => ipcRenderer.removeListener(IPC.passwordManagerStatusChanged, listener);
+    },
+  },
 
   minimizeWindow: () => invoke<void>(IPC.minimizeWindow),
   toggleMaximizeWindow: () => invoke<void>(IPC.toggleMaximizeWindow),

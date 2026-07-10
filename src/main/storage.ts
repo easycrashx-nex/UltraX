@@ -184,6 +184,24 @@ export const DEFAULT_SETTINGS: BrowserSettings = {
   pageZoom: 1,
   tabHoverPreview: true,
   shortcutOverrides: {},
+  passwordManager: {
+    offerAutofill: true,
+    autofillUsername: true,
+    autoLockMinutes: 15,
+    lockOnAppClose: true,
+    lockOnAllWindowsClosed: true,
+    lockOnScreenLock: true,
+    lockOnSleep: true,
+    clipboardClearSeconds: 30,
+    generator: {
+      length: 20,
+      uppercase: true,
+      lowercase: true,
+      digits: true,
+      symbols: true,
+      avoidAmbiguous: true,
+    },
+  },
 };
 
 export function createDefaultState(): BrowserState {
@@ -696,6 +714,40 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
         : DEFAULT_SETTINGS.pageZoom,
     tabHoverPreview: boolValue(settings?.tabHoverPreview, DEFAULT_SETTINGS.tabHoverPreview),
     shortcutOverrides: normalizeShortcutOverrides(settings?.shortcutOverrides),
+    passwordManager: normalizePasswordManagerSettings(settings?.passwordManager),
+  };
+}
+
+function normalizePasswordManagerSettings(
+  value: BrowserSettings["passwordManager"] | undefined,
+): BrowserSettings["passwordManager"] {
+  const defaults = DEFAULT_SETTINGS.passwordManager;
+  const autoLockMinutes = [0, 1, 5, 15, 30, 60].includes(Number(value?.autoLockMinutes))
+    ? value!.autoLockMinutes
+    : defaults.autoLockMinutes;
+  const clipboardClearSeconds = [0, 15, 30, 60].includes(Number(value?.clipboardClearSeconds))
+    ? value!.clipboardClearSeconds
+    : defaults.clipboardClearSeconds;
+  const length = Number.isFinite(value?.generator?.length)
+    ? Math.max(8, Math.min(128, Math.trunc(Number(value?.generator.length))))
+    : defaults.generator.length;
+  return {
+    offerAutofill: boolValue(value?.offerAutofill, defaults.offerAutofill),
+    autofillUsername: boolValue(value?.autofillUsername, defaults.autofillUsername),
+    autoLockMinutes,
+    lockOnAppClose: boolValue(value?.lockOnAppClose, defaults.lockOnAppClose),
+    lockOnAllWindowsClosed: boolValue(value?.lockOnAllWindowsClosed, defaults.lockOnAllWindowsClosed),
+    lockOnScreenLock: boolValue(value?.lockOnScreenLock, defaults.lockOnScreenLock),
+    lockOnSleep: boolValue(value?.lockOnSleep, defaults.lockOnSleep),
+    clipboardClearSeconds,
+    generator: {
+      length,
+      uppercase: boolValue(value?.generator?.uppercase, defaults.generator.uppercase),
+      lowercase: boolValue(value?.generator?.lowercase, defaults.generator.lowercase),
+      digits: boolValue(value?.generator?.digits, defaults.generator.digits),
+      symbols: boolValue(value?.generator?.symbols, defaults.generator.symbols),
+      avoidAmbiguous: boolValue(value?.generator?.avoidAmbiguous, defaults.generator.avoidAmbiguous),
+    },
   };
 }
 

@@ -19,6 +19,18 @@ import type {
   UpdateStatusSnapshot,
   ViewInsets,
 } from "./types";
+import type {
+  PasswordBackupResult,
+  PasswordFillRequest,
+  PasswordFillResult,
+  PasswordGeneratorSettings,
+  PasswordHealthSummary,
+  PasswordImportSummary,
+  PasswordManagerStatus,
+  PasswordVaultItemDisplay,
+  PasswordVaultItemInput,
+  PasswordVaultItemUpdate,
+} from "./password-manager";
 
 export type Unsubscribe = () => void;
 
@@ -116,6 +128,29 @@ export type UltraXApi = {
     message: string,
   ) => Promise<void>;
   clearExtensionErrors: (extensionId?: string) => Promise<void>;
+
+  passwordManager: {
+    getStatus: () => Promise<PasswordManagerStatus>;
+    setup: (masterPassword: string, enableQuickUnlock: boolean) => Promise<PasswordManagerStatus>;
+    unlock: (masterPassword: string) => Promise<PasswordManagerStatus>;
+    unlockWithOs: () => Promise<PasswordManagerStatus>;
+    lock: () => Promise<PasswordManagerStatus>;
+    list: (query?: string) => Promise<PasswordVaultItemDisplay[]>;
+    create: (input: PasswordVaultItemInput) => Promise<PasswordVaultItemDisplay>;
+    update: (itemId: string, input: PasswordVaultItemUpdate) => Promise<PasswordVaultItemDisplay>;
+    delete: (itemId: string) => Promise<void>;
+    duplicate: (itemId: string) => Promise<PasswordVaultItemDisplay>;
+    generate: (options: PasswordGeneratorSettings) => Promise<string>;
+    copyField: (itemId: string, field: "username" | "password") => Promise<void>;
+    fill: (request: PasswordFillRequest) => Promise<PasswordFillResult>;
+    health: () => Promise<PasswordHealthSummary>;
+    importCsv: () => Promise<PasswordImportSummary | null>;
+    exportBackup: (backupPassword: string) => Promise<PasswordBackupResult | null>;
+    importBackup: (backupPassword: string) => Promise<PasswordImportSummary | null>;
+    changeMasterPassword: (currentPassword: string, newPassword: string) => Promise<void>;
+    deleteVault: (masterPassword: string) => Promise<void>;
+    onStatusChanged: (callback: (status: PasswordManagerStatus) => void) => Unsubscribe;
+  };
 
   minimizeWindow: () => Promise<void>;
   toggleMaximizeWindow: () => Promise<void>;

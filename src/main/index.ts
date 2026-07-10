@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  powerMonitor,
   screen,
   session,
   type IpcMainInvokeEvent,
@@ -26,10 +27,18 @@ import type {
   UpdateSettings,
   ViewInsets,
 } from "../shared/types";
+import type {
+  PasswordFillRequest,
+  PasswordGeneratorSettings,
+  PasswordManagerSettings,
+  PasswordVaultItemInput,
+  PasswordVaultItemUpdate,
+} from "../shared/password-manager";
 import { BrowserController } from "./browser-controller";
 import { ensureExtensionsWorkspace } from "./extension-workspace";
 import { WEB_PARTITION } from "./navigation";
 import { StorageService } from "./storage";
+import { PasswordManagerService } from "./password-manager/password-manager-service";
 import { UpdateManager } from "./updates/update-manager";
 
 type WindowRecord = {
@@ -47,6 +56,7 @@ type CreateWindowOptions = {
 
 const windowRecords = new Map<number, WindowRecord>();
 let storage = undefined as unknown as StorageService;
+let passwordManager = undefined as unknown as PasswordManagerService;
 let ipcHandlersRegistered = false;
 
 const shouldUseDevServer = !app.isPackaged && process.env.ULTRAX_DEV_SERVER === "1";
@@ -58,6 +68,15 @@ if (process.env.ULTRAX_E2E_USER_DATA) {
   app.setPath("userData", process.env.ULTRAX_E2E_USER_DATA);
 }
 storage = new StorageService();
+passwordManager = new PasswordManagerService({
+  directory: path.join(app.getPath("userData"), "password-manager"),
+  getSettings: () => getCurrentPasswordManagerSettings(),
+  onStatusChanged: (status) => {
+    for (const record of windowRecords.values()) {
+      if (!record.window.isDestroyed()) record.window.webContents.send(IPC.passwordManagerStatusChanged, status);
+    }
+  },
+});
 applyStartupHardwareAccelerationPreference();
 
 function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
@@ -165,8 +184,12 @@ function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
   }
 
   window.on("closed", () => {
+    const lockWhenAllWindowsClose = record.controller.getState().settings.passwordManager.lockOnAllWindowsClosed;
     record.controller.dispose();
     windowRecords.delete(webContentsId);
+    if (windowRecords.size === 0 && lockWhenAllWindowsClose) {
+      void passwordManager.lock();
+    }
   });
 
   return window;
@@ -464,6 +487,7 @@ function registerIpcHandlers(): void {
     const patch = readSettingsPatch(partial);
     record.controller.updateSettings(patch);
     syncSettingsToOtherWindows(record);
+    passwordManager.configure();
   });
   handle(IPC.clearBrowserData, async (record) => {
     await record.controller.clearBrowserData();
@@ -474,9 +498,13 @@ function registerIpcHandlers(): void {
   handle(IPC.resetSettings, (record) => {
     record.controller.resetSettings();
     syncSettingsToOtherWindows(record);
+    passwordManager.configure();
   });
   handle(IPC.getRuntimeInfo, () => getRuntimeInfo());
-  handle(IPC.openShellDevTools, (record) => record.window.webContents.openDevTools({ mode: "detach" }));
+  handle(IPC.openShellDevTools, (record) => {
+    if (app.isPackaged) throw new Error("Shell developer tools are disabled in production builds.");
+    record.window.webContents.openDevTools({ mode: "detach" });
+  });
   handle(IPC.relaunchApp, () => {
     app.relaunch();
     app.exit(0);
@@ -561,6 +589,69 @@ function registerIpcHandlers(): void {
       extensionId === undefined ? undefined : readString(extensionId, "extension id", 128),
     ),
   );
+  handle(IPC.passwordManagerGetStatus, () => passwordManager.getStatus());
+  handle(IPC.passwordManagerSetup, (_record, _event, masterPassword, enableQuickUnlock) =>
+    passwordManager.setup(
+      readString(masterPassword, "master password", 1024),
+      readBoolean(enableQuickUnlock, "OS quick unlock setting"),
+    ),
+  );
+  handle(IPC.passwordManagerUnlock, (_record, _event, masterPassword) =>
+    passwordManager.unlock(readString(masterPassword, "master password", 1024)),
+  );
+  handle(IPC.passwordManagerUnlockWithOs, () => passwordManager.unlockWithOs());
+  handle(IPC.passwordManagerLock, () => passwordManager.lock());
+  handle(IPC.passwordManagerList, (_record, _event, query) =>
+    passwordManager.list(readString(query, "password search", 256)),
+  );
+  handle(IPC.passwordManagerCreate, (_record, _event, input) =>
+    passwordManager.create(readPasswordItemInput(input)),
+  );
+  handle(IPC.passwordManagerUpdate, (_record, _event, itemId, input) =>
+    passwordManager.update(
+      readString(itemId, "password item id", 128),
+      readPasswordItemUpdate(input),
+    ),
+  );
+  handle(IPC.passwordManagerDelete, (_record, _event, itemId) =>
+    passwordManager.delete(readString(itemId, "password item id", 128)),
+  );
+  handle(IPC.passwordManagerDuplicate, (_record, _event, itemId) =>
+    passwordManager.duplicate(readString(itemId, "password item id", 128)),
+  );
+  handle(IPC.passwordManagerGenerate, (_record, _event, options) =>
+    passwordManager.generate(readPasswordGeneratorOptions(options)),
+  );
+  handle(IPC.passwordManagerCopyField, (_record, _event, itemId, field) => {
+    if (field !== "username" && field !== "password") throw new Error("Invalid password field.");
+    return passwordManager.copyField(readString(itemId, "password item id", 128), field);
+  });
+  handle(IPC.passwordManagerFill, async (record, _event, request) => {
+    const fillRequest = readPasswordFillRequest(request);
+    const settings = record.controller.getState().settings.passwordManager;
+    if (!settings.offerAutofill) throw new Error("Password fill is disabled in Settings.");
+    const origin = record.controller.getActiveTabOrigin(fillRequest.tabId);
+    return passwordManager.withCredentialForOrigin(fillRequest.itemId, origin, (credential) =>
+      record.controller.fillActiveCredential(fillRequest.tabId, credential, settings.autofillUsername),
+    );
+  });
+  handle(IPC.passwordManagerHealth, () => passwordManager.health());
+  handle(IPC.passwordManagerImportCsv, (record) => passwordManager.importCsv(record.window));
+  handle(IPC.passwordManagerExportBackup, (record, _event, backupPassword) =>
+    passwordManager.exportBackup(record.window, readString(backupPassword, "backup password", 1024)),
+  );
+  handle(IPC.passwordManagerImportBackup, (record, _event, backupPassword) =>
+    passwordManager.importBackup(record.window, readString(backupPassword, "backup password", 1024)),
+  );
+  handle(IPC.passwordManagerChangeMaster, (_record, _event, currentPassword, newPassword) =>
+    passwordManager.changeMasterPassword(
+      readString(currentPassword, "current master password", 1024),
+      readString(newPassword, "new master password", 1024),
+    ),
+  );
+  handle(IPC.passwordManagerDeleteVault, (_record, _event, masterPassword) =>
+    passwordManager.deleteVault(readString(masterPassword, "master password", 1024)),
+  );
   handle(IPC.minimizeWindow, (record) => record.window.minimize());
   handle(IPC.toggleMaximizeWindow, (record) => {
     if (record.window.isMaximized()) {
@@ -593,6 +684,11 @@ function syncSettingsToOtherWindows(source: WindowRecord): void {
       record.controller.syncSettings(settings);
     }
   }
+}
+
+function getCurrentPasswordManagerSettings(): PasswordManagerSettings {
+  return windowRecords.values().next().value?.controller.getState().settings.passwordManager ??
+    storage.load().settings.passwordManager;
 }
 
 function getInitialWindowBounds(
@@ -1403,7 +1499,85 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
     patch.shortcutOverrides = normalizeShortcutOverrides(candidate.shortcutOverrides);
   }
 
+  if (candidate.passwordManager !== undefined) {
+    patch.passwordManager = readPasswordManagerSettings(candidate.passwordManager);
+  }
+
   return patch;
+}
+
+function readPasswordManagerSettings(value: unknown): PasswordManagerSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid password manager settings.");
+  const candidate = value as Partial<PasswordManagerSettings>;
+  if (![0, 1, 5, 15, 30, 60].includes(Number(candidate.autoLockMinutes))) throw new Error("Invalid password vault auto-lock timeout.");
+  if (![0, 15, 30, 60].includes(Number(candidate.clipboardClearSeconds))) throw new Error("Invalid password clipboard timeout.");
+  return {
+    offerAutofill: readBoolean(candidate.offerAutofill, "password autofill setting"),
+    autofillUsername: readBoolean(candidate.autofillUsername, "username autofill setting"),
+    autoLockMinutes: candidate.autoLockMinutes!,
+    lockOnAppClose: readBoolean(candidate.lockOnAppClose, "vault app-close lock setting"),
+    lockOnAllWindowsClosed: readBoolean(candidate.lockOnAllWindowsClosed, "vault window-close lock setting"),
+    lockOnScreenLock: readBoolean(candidate.lockOnScreenLock, "vault screen-lock setting"),
+    lockOnSleep: readBoolean(candidate.lockOnSleep, "vault sleep-lock setting"),
+    clipboardClearSeconds: candidate.clipboardClearSeconds!,
+    generator: readPasswordGeneratorOptions(candidate.generator),
+  };
+}
+
+function readPasswordItemInput(value: unknown): PasswordVaultItemInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid login data.");
+  const candidate = value as Partial<PasswordVaultItemInput>;
+  return {
+    title: readString(candidate.title, "login title", 256),
+    origins: readStringArray(candidate.origins, "login origin", 20, 2048),
+    username: readString(candidate.username, "login username", 512),
+    password: readString(candidate.password, "login password", 4096),
+    notes: candidate.notes === undefined ? undefined : readString(candidate.notes, "login notes", 16_384),
+    favorite: readBoolean(candidate.favorite, "login favorite state"),
+    tags: readStringArray(candidate.tags, "login tag", 30, 64),
+  };
+}
+
+function readPasswordItemUpdate(value: unknown): PasswordVaultItemUpdate {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid login update.");
+  const candidate = value as Partial<PasswordVaultItemUpdate>;
+  return {
+    title: readString(candidate.title, "login title", 256),
+    origins: readStringArray(candidate.origins, "login origin", 20, 2048),
+    username: readString(candidate.username, "login username", 512),
+    password: candidate.password === undefined ? undefined : readString(candidate.password, "login password", 4096),
+    notes: candidate.notes === undefined ? undefined : readString(candidate.notes, "login notes", 16_384),
+    favorite: readBoolean(candidate.favorite, "login favorite state"),
+    tags: readStringArray(candidate.tags, "login tag", 30, 64),
+  };
+}
+
+function readPasswordGeneratorOptions(value: unknown): PasswordGeneratorSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid password generator settings.");
+  const candidate = value as Partial<PasswordGeneratorSettings>;
+  if (!Number.isInteger(candidate.length) || Number(candidate.length) < 8 || Number(candidate.length) > 128) throw new Error("Invalid generated password length.");
+  return {
+    length: Number(candidate.length),
+    uppercase: readBoolean(candidate.uppercase, "uppercase generator setting"),
+    lowercase: readBoolean(candidate.lowercase, "lowercase generator setting"),
+    digits: readBoolean(candidate.digits, "digits generator setting"),
+    symbols: readBoolean(candidate.symbols, "symbols generator setting"),
+    avoidAmbiguous: readBoolean(candidate.avoidAmbiguous, "ambiguous character generator setting"),
+  };
+}
+
+function readPasswordFillRequest(value: unknown): PasswordFillRequest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid password fill request.");
+  const candidate = value as Partial<PasswordFillRequest>;
+  return {
+    itemId: readString(candidate.itemId, "password item id", 128),
+    tabId: readString(candidate.tabId, "password fill tab id", 128),
+  };
+}
+
+function readStringArray(value: unknown, label: string, maximumItems: number, maximumLength: number): string[] {
+  if (!Array.isArray(value) || value.length > maximumItems) throw new Error(`Invalid ${label} list.`);
+  return value.map((item) => readString(item, label, maximumLength));
 }
 
 function readFindInPageOptions(value: unknown): FindInPageOptions {
@@ -1615,13 +1789,20 @@ function applyStartupHardwareAccelerationPreference(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     ensureExtensionsWorkspace();
   } catch (error) {
     console.warn(error instanceof Error ? error.message : "Extensions workspace setup failed.");
   }
   configureSecurity();
+  await passwordManager.initialize();
+  powerMonitor.on("lock-screen", () => {
+    if (getCurrentPasswordManagerSettings().lockOnScreenLock) void passwordManager.lock();
+  });
+  powerMonitor.on("suspend", () => {
+    if (getCurrentPasswordManagerSettings().lockOnSleep) void passwordManager.lock();
+  });
   registerIpcHandlers();
   createInitialWindows();
 
@@ -1636,4 +1817,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  if (getCurrentPasswordManagerSettings().lockOnAppClose) void passwordManager.lock();
 });

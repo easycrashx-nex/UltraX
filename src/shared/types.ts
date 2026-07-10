@@ -1,3 +1,5 @@
+import type { PasswordManagerSettings } from "./password-manager";
+
 export type ThemeMode = "dark" | "light" | "system";
 
 export type SearchEngine = "duckduckgo" | "google" | "bing" | "brave" | "custom";
@@ -464,6 +466,7 @@ export type BrowserSettings = {
   pageZoom: number;
   tabHoverPreview: boolean;
   shortcutOverrides: ShortcutOverrides;
+  passwordManager: PasswordManagerSettings;
 };
 
 export type RuntimeMemoryInfo = {

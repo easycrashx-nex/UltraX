@@ -13,6 +13,7 @@ import {
   DatabaseZap,
   Download,
   Info,
+  KeyRound,
   Moon,
   Palette,
   Power,
@@ -23,7 +24,8 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { PasswordManagerStatus } from "@shared/password-manager";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SettingsCategoryId } from "./types";
@@ -68,6 +70,13 @@ export function QuickSettings({
   onOpenDownloads,
 }: QuickSettingsProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [passwordStatus, setPasswordStatus] = useState<PasswordManagerStatus | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    void window.ultraX.passwordManager.getStatus().then(setPasswordStatus);
+    return window.ultraX.passwordManager.onStatusChanged(setPasswordStatus);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -169,6 +178,20 @@ export function QuickSettings({
             label="Privacy"
             detail={settings.doNotTrack ? "Do Not Track on" : "Standard local controls"}
             onClick={() => onOpenSettings("privacy")}
+          />
+          <QuickActionRow
+            icon={<KeyRound aria-hidden="true" />}
+            label="Password Manager"
+            detail={
+              passwordStatus?.state === "unlocked"
+                ? "Unlocked"
+                : passwordStatus?.state === "locked"
+                  ? "Locked"
+                  : passwordStatus?.state === "corrupted"
+                    ? "Needs recovery"
+                    : "Setup required"
+            }
+            onClick={() => onOpenSettings("passwords")}
           />
           <QuickActionRow
             icon={<DatabaseZap aria-hidden="true" />}

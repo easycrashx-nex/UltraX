@@ -1,5 +1,29 @@
 # UltraX Browser Changelog
 
+## 1.1.8 - Scrollable Tabs and Secure Local Password Manager
+
+### Added
+
+- Added a Firefox-like horizontally scrollable normal tab region with fixed pinned tabs, readable 140 px minimum widths, conditional overflow controls, and a searchable All Tabs menu.
+- Added active-tab auto-scroll, local wheel and touchpad scrolling, and edge auto-scroll while reordering tabs in a scrolled strip.
+- Added a local-first encrypted password vault with master-password setup, authenticated AES-256-GCM storage, memory-hard scrypt key derivation, optional OS-backed quick unlock, atomic writes, and encrypted last-known-good backups.
+- Added Passwords & Autofill Settings and Quick Settings access with redacted login search, CRUD, favorites, tags, CSPRNG password generation, local health checks, clipboard protection, CSV import, and encrypted backup import/export.
+- Added explicit user-triggered credential fill for exact matching HTTPS origins in the active top-level frame.
+- Added password-manager threat model, architecture, security guidance, and v1.1.8 security review documentation.
+
+### Security
+
+- Password-manager IPC is shell-only, typed, sender validated, and unavailable to websites, extensions, and plugins.
+- Password lists never return stored passwords; copy and fill actions complete in the main process.
+- HTTP and child-frame password fill are blocked, repeated unlock failures are rate limited, and screen lock/suspend clear the in-memory vault key.
+- Production shell DevTools are disabled to reduce accidental secret exposure.
+- Automatic form capture and save/update prompts remain disabled until UltraX has a dedicated isolated and audited content bridge.
+
+### Tests
+
+- Added cryptography, tamper detection, wrong-password, origin matching, generator, clipboard ownership, CSV import, vault restart, atomic backup, and encrypted backup unit coverage.
+- Added Electron E2E coverage for tab overflow, pinned-tab stability, active-tab visibility, drag edge auto-scroll, encrypted vault CRUD, lock/unlock, plaintext-at-rest checks, and HTTP fill blocking.
+
 ## 1.1.7 - Address Suggestions Layering Patch
 
 ### Fixed

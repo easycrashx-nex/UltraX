@@ -5,7 +5,7 @@
 Use patch releases for focused improvements:
 
 ```powershell
-npm version 1.1.7 --no-git-tag-version
+npm version 1.1.8 --no-git-tag-version
 ```
 
 Update `CHANGELOG.md` before tagging.
@@ -44,8 +44,8 @@ Skip the command if `origin` already points to that URL.
 The release workflow runs on tags:
 
 ```powershell
-git tag v1.1.7
-git push origin v1.1.7
+git tag v1.1.8
+git push origin v1.1.8
 ```
 
 The workflow:
@@ -62,7 +62,7 @@ The workflow:
 
 ## E2E Tests
 
-UltraX includes a small Electron Playwright suite for tab UX, settings persistence, and Updates page smoke coverage:
+UltraX includes Electron Playwright coverage for tab UX, settings persistence, encrypted password-vault workflows, and Updates page smoke coverage:
 
 ```powershell
 npm run test:e2e

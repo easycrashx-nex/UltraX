@@ -352,7 +352,7 @@ test("settings persist across an app restart", async () => {
   }
 });
 
-test("fresh settings use v1.1.7 search, suggestions, home, and permission defaults", async () => {
+test("fresh settings use v1.1.8 search, suggestions, home, and permission defaults", async () => {
   const app = await launchUltraX();
 
   try {
@@ -729,11 +729,145 @@ test("updates page opens and renders current version controls", async () => {
     await app.page.getByTestId("settings-category-updates").click();
 
     await expect(app.page.getByText("Current version")).toBeVisible();
-    await expect(app.page.getByText(/UltraX Browser 1\.1\.7/)).toBeVisible();
+    await expect(app.page.getByText(/UltraX Browser 1\.1\.8/)).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Check for Updates" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Download Update" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Install and Restart" })).toBeVisible();
   } finally {
     await closeUltraX(app);
+  }
+});
+
+test("normal tabs scroll without moving pinned tabs or the New Tab control", async () => {
+  const app = await launchUltraX();
+  try {
+    for (let index = 0; index < 11; index += 1) {
+      await app.page.evaluate(() => (window as any).ultraX.createTab());
+    }
+    await waitForTabCount(app.page, 12);
+    const state = await getState(app.page);
+    await app.page.evaluate((tabId) => (window as any).ultraX.pinTab(tabId, true), state.tabs[0].id);
+
+    const normalScroll = app.page.getByTestId("normal-tab-scroll");
+    await expect(app.page.getByTestId("tab-overflow-controls")).toBeVisible();
+    await expect(app.page.getByTestId("new-tab-button")).toBeVisible();
+    const metrics = await normalScroll.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      scrollLeft: element.scrollLeft,
+    }));
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth);
+
+    const normalWidths = await app.page.locator('[data-tab-group="normal"] [data-testid="browser-tab"]').evaluateAll((tabs) =>
+      tabs.map((tab) => tab.getBoundingClientRect().width),
+    );
+    expect(normalWidths.every((width) => width >= 140)).toBe(true);
+
+    const pinned = app.page.locator('[data-tab-group="pinned"] [data-testid="browser-tab"]').first();
+    const pinnedBefore = await pinned.boundingBox();
+    await normalScroll.dispatchEvent("wheel", { deltaY: 480, deltaX: 0 });
+    await expect.poll(() => normalScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    const pinnedAfter = await pinned.boundingBox();
+    expect(Math.round(pinnedAfter!.x)).toBe(Math.round(pinnedBefore!.x));
+
+    const latestState = await getState(app.page);
+    const firstNormal = latestState.tabs.find((tab: any) => !tab.isPinned);
+    const lastNormal = [...latestState.tabs].reverse().find((tab: any) => !tab.isPinned);
+    await app.page.evaluate((tabId) => (window as any).ultraX.switchTab(tabId), firstNormal.id);
+    await expect.poll(() => normalScroll.evaluate((element) => element.scrollLeft)).toBeLessThan(40);
+    await app.page.evaluate((tabId) => (window as any).ultraX.switchTab(tabId), lastNormal.id);
+    await expect.poll(async () => {
+      const tabBox = await app.page.locator(`[data-tab-id="${lastNormal.id}"]`).boundingBox();
+      const scrollBox = await normalScroll.boundingBox();
+      return Boolean(tabBox && scrollBox && tabBox.x >= scrollBox.x - 2 && tabBox.x + tabBox.width <= scrollBox.x + scrollBox.width + 2);
+    }).toBe(true);
+
+    await normalScroll.evaluate((element) => { element.scrollLeft = 0; });
+    const dragTab = app.page.locator(`[data-tab-id="${firstNormal.id}"]`);
+    const dragBox = await dragTab.boundingBox();
+    const dragScrollBox = await normalScroll.boundingBox();
+    await app.page.mouse.move(dragBox!.x + dragBox!.width / 2, dragBox!.y + dragBox!.height / 2);
+    await app.page.mouse.down();
+    await app.page.mouse.move(dragScrollBox!.x + dragScrollBox!.width - 8, dragBox!.y + dragBox!.height / 2, { steps: 8 });
+    await expect.poll(() => normalScroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(20);
+    await app.page.mouse.up();
+
+    await app.page.getByRole("button", { name: "Show all tabs" }).click();
+    await expect(app.page.getByTestId("all-tabs-menu")).toBeVisible();
+    await app.page.getByRole("textbox", { name: "Search open tabs" }).fill("New Tab");
+    await expect(app.page.getByTestId("all-tabs-menu").getByRole("listitem")).toHaveCount(12);
+
+    await app.page.keyboard.press("Escape");
+    const visibleRects = await app.page.locator('[data-tab-group="normal"] [data-testid="browser-tab"]').evaluateAll((tabs) => {
+      const viewport = tabs[0]?.parentElement?.parentElement?.getBoundingClientRect();
+      return tabs.map((tab) => tab.getBoundingClientRect())
+        .filter((rect) => viewport && rect.right > viewport.left && rect.left < viewport.right)
+        .map((rect) => ({ left: rect.left, right: rect.right }))
+        .sort((left, right) => left.left - right.left);
+    });
+    expect(visibleRects.every((rect, index) => index === 0 || rect.left >= visibleRects[index - 1].right)).toBe(true);
+  } finally {
+    await closeUltraX(app);
+  }
+});
+
+test("password vault setup, encrypted CRUD, lock and hostile HTTP fill block work end to end", async () => {
+  const app = await launchUltraX();
+  const server = await startTestPageServer('<!doctype html><input name="username"><input type="password">');
+  const masterPassword = "UltraX E2E master password 2026!";
+  try {
+    await app.page.locator('[data-quick-settings-trigger="true"]').click();
+    await app.page.getByRole("button", { name: "Open Settings" }).click();
+    await app.page.getByTestId("settings-category-passwords").click();
+    await expect(app.page.getByText("Create your local UltraX vault")).toBeVisible();
+
+    await app.page.getByLabel("Master password", { exact: true }).fill(masterPassword);
+    await app.page.getByLabel("Confirm master password").fill(masterPassword);
+    await app.page.getByRole("button", { name: "Create encrypted vault" }).click();
+    await expect(app.page.getByText("Local vault unlocked")).toBeVisible({ timeout: 15_000 });
+
+    await app.page.getByRole("button", { name: "Add login" }).click();
+    await app.page.getByLabel("Title").fill("UltraX E2E Login");
+    await app.page.getByLabel("Website origins").fill("https://example.com/login");
+    await app.page.getByRole("textbox", { name: "Username", exact: true }).fill("e2e-user@example.com");
+    await app.page.getByLabel("Password", { exact: true }).fill("E2E-only-password-93!");
+    await app.page.getByLabel("Tags").fill("test, local");
+    await app.page.getByRole("button", { name: "Encrypt and save" }).click();
+    await expect(app.page.getByRole("heading", { name: "UltraX E2E Login", exact: true })).toBeVisible();
+
+    const vaultPath = path.join(app.userDataDir, "password-manager", "vault.ultraxvault");
+    await expect.poll(async () => fs.readFile(vaultPath, "utf8").then(() => true).catch(() => false)).toBe(true);
+    const rawVault = await fs.readFile(vaultPath, "utf8");
+    expect(rawVault).not.toContain("E2E-only-password-93!");
+    expect(rawVault).not.toContain("e2e-user@example.com");
+    expect(rawVault).not.toContain("example.com");
+
+    const state = await getState(app.page);
+    await app.page.evaluate((url) => (window as any).ultraX.navigate(url), server.url);
+    await expect.poll(async () => (await getState(app.page)).tabs.find((tab: any) => tab.id === state.activeTabId)?.url).toContain(server.url);
+    const item = await app.page.evaluate(() => (window as any).ultraX.passwordManager.list("").then((items: any[]) => items[0]));
+    const fillError = await app.page.evaluate(async ({ itemId, tabId }) => {
+      try {
+        await (window as any).ultraX.passwordManager.fill({ itemId, tabId });
+        return null;
+      } catch (error) {
+        return String(error);
+      }
+    }, { itemId: item.id, tabId: state.activeTabId });
+    expect(fillError).toMatch(/HTTP|origin/i);
+
+    await app.page.getByRole("button", { name: "Lock now" }).click();
+    await expect(app.page.getByText("Password vault locked")).toBeVisible();
+    await app.page.getByLabel("Master password", { exact: true }).fill("wrong master password");
+    await app.page.getByRole("button", { name: "Unlock vault" }).click();
+    await expect(app.page.getByText(/could not be unlocked/i)).toBeVisible({ timeout: 15_000 });
+    await app.page.getByLabel("Master password", { exact: true }).fill(masterPassword);
+    await app.page.getByRole("button", { name: "Unlock vault" }).click();
+    await expect(app.page.getByText("Local vault unlocked")).toBeVisible({ timeout: 15_000 });
+    await app.page.getByRole("button", { name: "Analyze locally" }).click();
+    await expect(app.page.getByText("Insecure origins")).toBeVisible();
+  } finally {
+    await closeUltraX(app);
+    await server.close();
   }
 });

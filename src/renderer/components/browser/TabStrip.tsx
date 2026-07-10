@@ -1,7 +1,10 @@
 import type { BrowserTab } from "@shared/types";
 import {
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Globe2,
+  ListFilter,
   LoaderCircle,
   Minus,
   PanelTopOpen,
@@ -10,6 +13,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Search,
   Square,
   Volume2,
   VolumeX,
@@ -62,6 +66,12 @@ type TabPreviewState = {
   y: number;
 };
 
+type TabOverflowState = {
+  hasOverflow: boolean;
+  canScrollLeft: boolean;
+  canScrollRight: boolean;
+};
+
 type ReorderPlacement = "before" | "after";
 
 type TabDragState = {
@@ -84,6 +94,9 @@ const DRAG_START_THRESHOLD = 5;
 const DROP_CANCEL_Y_MARGIN = 42;
 const DEFAULT_BROWSER_CHROME_BOTTOM = 108;
 const TAB_PREVIEW_CHROME_GAP = 8;
+const TAB_SCROLL_STEP = 260;
+const TAB_EDGE_SCROLL_ZONE = 44;
+const TAB_EDGE_SCROLL_SPEED = 10;
 
 function getTabAccessibleLabel(tab: BrowserTab) {
   const state = tab.isMuted ? "Muted" : tab.isAudible ? "Playing audio" : null;
@@ -118,6 +131,9 @@ export function TabStrip({
   onCloseWindow,
 }: TabStripProps) {
   const stripRef = useRef<HTMLDivElement | null>(null);
+  const normalScrollRef = useRef<HTMLDivElement | null>(null);
+  const edgeScrollFrameRef = useRef<number | null>(null);
+  const edgeScrollDirectionRef = useRef<-1 | 0 | 1>(0);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   const tabsRef = useRef(tabs);
   const dragStateRef = useRef<TabDragState | null>(null);
@@ -126,6 +142,13 @@ export function TabStrip({
   const [dragState, setDragState] = useState<TabDragState | null>(null);
   const [menu, setMenu] = useState<TabMenuState | null>(null);
   const [preview, setPreview] = useState<TabPreviewState | null>(null);
+  const [allTabsOpen, setAllTabsOpen] = useState(false);
+  const [allTabsQuery, setAllTabsQuery] = useState("");
+  const [overflow, setOverflow] = useState<TabOverflowState>({
+    hasOverflow: false,
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
 
   tabsRef.current = tabs;
   const menuTab = useMemo(
@@ -142,6 +165,33 @@ export function TabStrip({
     () => tabs.find((tab) => tab.id === preview?.tabId) ?? null,
     [preview?.tabId, tabs],
   );
+  const filteredTabs = useMemo(() => {
+    const query = allTabsQuery.trim().toLocaleLowerCase();
+    if (!query) return tabs;
+    return tabs.filter((tab) =>
+      `${tab.title} ${tab.url}`.toLocaleLowerCase().includes(query),
+    );
+  }, [allTabsQuery, tabs]);
+
+  const updateOverflow = useCallback(() => {
+    const element = normalScrollRef.current;
+    if (!element) return;
+    const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth);
+    const hasOverflow = maxScrollLeft > 2;
+    setOverflow({
+      hasOverflow,
+      canScrollLeft: hasOverflow && element.scrollLeft > 2,
+      canScrollRight: hasOverflow && element.scrollLeft < maxScrollLeft - 2,
+    });
+  }, []);
+
+  const stopEdgeScroll = useCallback(() => {
+    edgeScrollDirectionRef.current = 0;
+    if (edgeScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(edgeScrollFrameRef.current);
+      edgeScrollFrameRef.current = null;
+    }
+  }, []);
 
   const clearHoverPreviewTimer = useCallback(() => {
     if (hoverPreviewTimerRef.current !== null) {
@@ -242,6 +292,93 @@ export function TabStrip({
     [],
   );
 
+  const runEdgeScroll = useCallback(function scrollDragEdge() {
+    const scroll = normalScrollRef.current;
+    const direction = edgeScrollDirectionRef.current;
+    if (!scroll || direction === 0) {
+      edgeScrollFrameRef.current = null;
+      return;
+    }
+
+    const before = scroll.scrollLeft;
+    scroll.scrollLeft += direction * TAB_EDGE_SCROLL_SPEED;
+    updateOverflow();
+    const current = dragStateRef.current;
+    if (current && scroll.scrollLeft !== before) {
+      const dropIndex = calculateDropIndex(current.tabId, false, current.currentX);
+      const nextState = { ...current, dropIndex };
+      dragStateRef.current = nextState;
+      setDragState(nextState);
+    }
+    edgeScrollFrameRef.current = window.requestAnimationFrame(scrollDragEdge);
+  }, [calculateDropIndex, updateOverflow]);
+
+  const updateDragEdgeScroll = useCallback((pointerX: number, enabled: boolean) => {
+    const scroll = normalScrollRef.current;
+    if (!enabled || !scroll) {
+      stopEdgeScroll();
+      return;
+    }
+
+    const rect = scroll.getBoundingClientRect();
+    const direction: -1 | 0 | 1 =
+      pointerX < rect.left + TAB_EDGE_SCROLL_ZONE
+        ? -1
+        : pointerX > rect.right - TAB_EDGE_SCROLL_ZONE
+          ? 1
+          : 0;
+    if (direction === edgeScrollDirectionRef.current) return;
+    stopEdgeScroll();
+    edgeScrollDirectionRef.current = direction;
+    if (direction !== 0) {
+      edgeScrollFrameRef.current = window.requestAnimationFrame(runEdgeScroll);
+    }
+  }, [runEdgeScroll, stopEdgeScroll]);
+
+  useEffect(() => {
+    const element = normalScrollRef.current;
+    if (!element) return;
+    const resizeObserver = new ResizeObserver(updateOverflow);
+    resizeObserver.observe(element);
+    const content = element.firstElementChild;
+    if (content) resizeObserver.observe(content);
+    updateOverflow();
+    return () => resizeObserver.disconnect();
+  }, [normalTabs.length, updateOverflow]);
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    const element = tabRefs.current.get(activeTabId);
+    const scroll = normalScrollRef.current;
+    if (!element || !scroll || element.closest('[data-tab-group="normal"]') === null) return;
+    const tabRect = element.getBoundingClientRect();
+    const scrollRect = scroll.getBoundingClientRect();
+    if (tabRect.left >= scrollRect.left + 2 && tabRect.right <= scrollRect.right - 2) return;
+    const delta = tabRect.left < scrollRect.left
+      ? tabRect.left - scrollRect.left - 4
+      : tabRect.right - scrollRect.right + 4;
+    scroll.scrollBy({ left: delta, behavior: reducedMotion ? "auto" : "smooth" });
+    window.setTimeout(updateOverflow, reducedMotion ? 0 : 180);
+  }, [activeTabId, normalTabs.length, reducedMotion, updateOverflow]);
+
+  useEffect(() => {
+    if (!allTabsOpen) return;
+    const close = (event: Event) => {
+      if (event.type === "keydown" && (event as KeyboardEvent).key !== "Escape") return;
+      setAllTabsOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    window.addEventListener("blur", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+      window.removeEventListener("blur", close);
+    };
+  }, [allTabsOpen]);
+
+  useEffect(() => () => stopEdgeScroll(), [stopEdgeScroll]);
+
   const getPreviewTabs = useCallback(
     (groupTabs: BrowserTab[], isPinned: boolean) => {
       if (!dragState?.isDragging || dragState.isPinned !== isPinned) {
@@ -327,6 +464,11 @@ export function TabStrip({
         return;
       }
 
+      const isDragging = current.isDragging ||
+        Math.hypot(event.clientX - current.startX, event.clientY - current.startY) >=
+          DRAG_START_THRESHOLD;
+      updateDragEdgeScroll(event.clientX, isDragging && !current.isPinned);
+
       setDragState((previous) => {
         if (!previous || event.pointerId !== previous.pointerId) {
           return previous;
@@ -359,6 +501,8 @@ export function TabStrip({
         return;
       }
 
+      stopEdgeScroll();
+
       const dx = event.clientX - current.startX;
       const dy = event.clientY - current.startY;
       const isDragging = current.isDragging || Math.hypot(dx, dy) >= DRAG_START_THRESHOLD;
@@ -378,6 +522,8 @@ export function TabStrip({
       if (!dragStateRef.current) {
         return;
       }
+
+      stopEdgeScroll();
 
       suppressClickRef.current = true;
       window.setTimeout(() => {
@@ -403,7 +549,7 @@ export function TabStrip({
       window.removeEventListener("pointercancel", cancel);
       window.removeEventListener("keydown", keydown);
     };
-  }, [calculateDropIndex, finishTabDrag]);
+  }, [calculateDropIndex, finishTabDrag, stopEdgeScroll, updateDragEdgeScroll]);
 
   const openContextMenu = (tab: BrowserTab, x: number, y: number) => {
     closePreview();
@@ -478,6 +624,7 @@ export function TabStrip({
 
   const renderTab = (tab: BrowserTab) => {
     const isActive = tab.id === activeTabId;
+    const tabPosition = tabs.findIndex((item) => item.id === tab.id) + 1;
     const isDragSource = dragState?.tabId === tab.id;
     const isDragPlaceholder = Boolean(isDragSource && dragState?.isDragging);
 
@@ -486,8 +633,12 @@ export function TabStrip({
         key={tab.id}
         ref={(element) => setTabElement(tab.id, element)}
         type="button"
+        role="tab"
         aria-label={getTabAccessibleLabel(tab)}
-        aria-current={isActive ? "page" : undefined}
+        aria-selected={isActive}
+        aria-setsize={tabs.length}
+        aria-posinset={tabPosition}
+        tabIndex={isActive ? 0 : -1}
         data-testid="browser-tab"
         data-tab-id={tab.id}
         aria-grabbed={isDragPlaceholder}
@@ -521,6 +672,13 @@ export function TabStrip({
           openContextMenu(tab, event.clientX, event.clientY);
         }}
         onKeyDown={(event) => {
+          if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            event.preventDefault();
+            const direction = event.key === "ArrowRight" ? 1 : -1;
+            const nextIndex = (tabPosition - 1 + direction + tabs.length) % tabs.length;
+            onSwitchTab(tabs[nextIndex].id);
+            return;
+          }
           if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
             event.preventDefault();
             const rect = event.currentTarget.getBoundingClientRect();
@@ -531,7 +689,7 @@ export function TabStrip({
           "no-drag group relative flex h-8 touch-none items-center gap-2 rounded-t-lg border text-left text-xs outline-none transition-[background-color,border-color,box-shadow,opacity,transform] duration-150 ease-out focus-visible:ring-[3px] focus-visible:ring-ring/30",
           tab.isPinned
             ? "w-11 flex-none justify-center px-0"
-            : "min-w-24 max-w-56 flex-[1_1_11rem] px-3",
+            : "w-[220px] min-w-[140px] max-w-[280px] flex-none px-3",
           isActive
             ? "z-10 border-border/90 border-b-card bg-card/95 text-foreground shadow-[inset_0_1px_0_hsl(0_0%_100%/0.06)]"
             : "z-0 border-transparent bg-transparent text-muted-foreground hover:bg-accent/70 hover:text-foreground",
@@ -600,7 +758,11 @@ export function TabStrip({
       ref={stripRef}
       className="drag-region relative flex h-10 select-none items-end gap-2 border-b border-border/75 bg-background/90 px-3 backdrop-blur-xl"
     >
-      <div className="flex min-w-0 flex-1 items-end gap-1 overflow-hidden">
+      <div
+        className="flex min-w-0 flex-1 items-end gap-1 overflow-hidden"
+        role="tablist"
+        aria-label="Open tabs"
+      >
         {previewPinnedTabs.length > 0 && (
           <div className="flex shrink-0 items-end gap-1" data-tab-group="pinned">
             {previewPinnedTabs.map(renderTab)}
@@ -611,9 +773,79 @@ export function TabStrip({
           <div className="mb-1 h-6 w-px shrink-0 bg-border/60" aria-hidden="true" />
         )}
 
-        <div className="flex min-w-0 flex-1 items-end gap-1 overflow-hidden" data-tab-group="normal">
-          {previewNormalTabs.map(renderTab)}
+        <div
+          ref={normalScrollRef}
+          className="tab-strip-scrollbar no-drag min-w-0 flex-1 overflow-x-auto overflow-y-hidden overscroll-x-contain"
+          data-tab-group="normal"
+          data-testid="normal-tab-scroll"
+          onScroll={updateOverflow}
+          onWheel={(event) => {
+            if (!overflow.hasOverflow || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+            event.preventDefault();
+            event.currentTarget.scrollLeft += event.deltaY;
+            updateOverflow();
+          }}
+        >
+          <div className="flex min-w-max items-end gap-1">
+            {previewNormalTabs.map(renderTab)}
+          </div>
         </div>
+
+        {overflow.hasOverflow && (
+          <div className="no-drag mb-0.5 flex shrink-0 items-center gap-0.5" data-testid="tab-overflow-controls">
+            <Button
+              type="button"
+              variant="chrome"
+              size="iconSm"
+              title="Scroll tabs left"
+              aria-label="Scroll tabs left"
+              disabled={!overflow.canScrollLeft}
+              onClick={() => {
+                normalScrollRef.current?.scrollBy({
+                  left: -TAB_SCROLL_STEP,
+                  behavior: reducedMotion ? "auto" : "smooth",
+                });
+                window.setTimeout(updateOverflow, reducedMotion ? 0 : 180);
+              }}
+              className="size-7"
+            >
+              <ChevronLeft aria-hidden="true" />
+            </Button>
+            <Button
+              type="button"
+              variant="chrome"
+              size="iconSm"
+              title="Scroll tabs right"
+              aria-label="Scroll tabs right"
+              disabled={!overflow.canScrollRight}
+              onClick={() => {
+                normalScrollRef.current?.scrollBy({
+                  left: TAB_SCROLL_STEP,
+                  behavior: reducedMotion ? "auto" : "smooth",
+                });
+                window.setTimeout(updateOverflow, reducedMotion ? 0 : 180);
+              }}
+              className="size-7"
+            >
+              <ChevronRight aria-hidden="true" />
+            </Button>
+            <Button
+              type="button"
+              variant="chrome"
+              size="iconSm"
+              title="All tabs"
+              aria-label="Show all tabs"
+              aria-expanded={allTabsOpen}
+              onClick={() => {
+                setAllTabsQuery("");
+                setAllTabsOpen((open) => !open);
+              }}
+              className="size-7"
+            >
+              <ListFilter aria-hidden="true" />
+            </Button>
+          </div>
+        )}
 
         <Button
           type="button"
@@ -662,6 +894,93 @@ export function TabStrip({
           <X aria-hidden="true" />
         </Button>
       </div>
+
+      {allTabsOpen &&
+        createPortal(
+          <section
+            className="no-drag fixed right-[118px] top-11 z-[100] flex max-h-[min(520px,calc(100vh-64px))] w-[360px] flex-col overflow-hidden rounded-2xl border border-border/70 bg-popover/98 p-2 text-foreground shadow-2xl shadow-black/45 backdrop-blur-2xl"
+            role="dialog"
+            aria-label="All open tabs"
+            data-testid="all-tabs-menu"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="relative mb-1.5">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <input
+                autoFocus
+                value={allTabsQuery}
+                onChange={(event) => setAllTabsQuery(event.target.value)}
+                placeholder="Search open tabs"
+                aria-label="Search open tabs"
+                className="h-9 w-full rounded-xl border border-border/70 bg-background/72 pl-9 pr-3 text-xs outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/55 focus:ring-[3px] focus:ring-primary/14"
+              />
+            </div>
+            <div className="settings-scrollbar min-h-0 overflow-y-auto" role="list">
+              {filteredTabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className={cn(
+                    "group flex min-h-12 items-center gap-2 rounded-xl px-2 py-1.5 transition-colors",
+                    tab.id === activeTabId ? "bg-primary/12" : "hover:bg-accent/70",
+                  )}
+                  role="listitem"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSwitchTab(tab.id);
+                      setAllTabsOpen(false);
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30"
+                  >
+                    <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-secondary/75">
+                      <TabIcon tab={tab} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-medium">{tab.title || "Untitled tab"}</span>
+                      <span className="block truncate text-[10px] text-muted-foreground">{tab.isNewTab ? "UltraX New Tab" : tab.url}</span>
+                    </span>
+                    {tab.isPinned && <Pin className="size-3 shrink-0 text-primary" aria-label="Pinned" />}
+                    {(tab.isMuted || tab.isAudible) && <TabAudioIndicator tab={tab} />}
+                  </button>
+                  <div className="flex shrink-0 items-center gap-0.5 opacity-70 group-hover:opacity-100 group-focus-within:opacity-100">
+                    <button
+                      type="button"
+                      title={tab.isPinned ? "Unpin tab" : "Pin tab"}
+                      aria-label={`${tab.isPinned ? "Unpin" : "Pin"} ${tab.title}`}
+                      onClick={() => onPinTab(tab.id, !tab.isPinned)}
+                      className="grid size-7 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/30"
+                    >
+                      {tab.isPinned ? <PinOff className="size-3.5" aria-hidden="true" /> : <Pin className="size-3.5" aria-hidden="true" />}
+                    </button>
+                    <button
+                      type="button"
+                      title={tab.isMuted ? "Unmute tab" : "Mute tab"}
+                      aria-label={`${tab.isMuted ? "Unmute" : "Mute"} ${tab.title}`}
+                      onClick={() => onToggleTabMuted(tab.id)}
+                      className="grid size-7 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/30"
+                    >
+                      {tab.isMuted ? <Volume2 className="size-3.5" aria-hidden="true" /> : <VolumeX className="size-3.5" aria-hidden="true" />}
+                    </button>
+                    <button
+                      type="button"
+                      title="Close tab"
+                      aria-label={`Close ${tab.title}`}
+                      onClick={() => onCloseTab(tab.id)}
+                      className="grid size-7 place-items-center rounded-lg text-muted-foreground outline-none hover:bg-destructive/18 hover:text-destructive focus-visible:ring-[3px] focus-visible:ring-ring/30"
+                    >
+                      <X className="size-3.5" aria-hidden="true" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {filteredTabs.length === 0 && (
+                <p className="px-3 py-8 text-center text-xs text-muted-foreground">No matching tabs</p>
+              )}
+            </div>
+          </section>,
+          document.body,
+        )}
 
       {menu &&
         menuTab &&

@@ -190,6 +190,15 @@ textarea {
   height: 0;
 }
 
+.tab-strip-scrollbar {
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+
+.tab-strip-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .settings-sidebar {
   background:
     linear-gradient(180deg, hsl(var(--popover) / 0.72), hsl(var(--popover) / 0.5)),

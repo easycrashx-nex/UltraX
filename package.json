@@ -1,6 +1,6 @@
 {
   "name": "ultrax",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "private": true,
   "productName": "UltraX Browser",
   "description": "UltraX Browser is a custom Electron desktop browser with React, TypeScript, Tailwind CSS, and WebContentsView tabs.",
@@ -36,6 +36,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "csv-parse": "^7.0.1",
     "electron-updater": "^6.8.9",
     "htmlparser2": "^10.0.0",
     "lucide-react": "^0.468.0",

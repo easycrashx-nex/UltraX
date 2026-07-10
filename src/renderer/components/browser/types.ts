@@ -10,6 +10,7 @@ export type SettingsCategoryId =
   | "tabs"
   | "privacy"
   | "security"
+  | "passwords"
   | "permissions"
   | "downloads"
   | "bookmarks"

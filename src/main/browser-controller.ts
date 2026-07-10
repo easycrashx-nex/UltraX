@@ -41,6 +41,7 @@ import type {
   UltraXExtensionPermission,
   ViewInsets,
 } from "../shared/types";
+import type { PasswordFillResult } from "../shared/password-manager";
 import { resolveShortcutAction } from "../shared/shortcuts";
 import {
   getHostnameLabel,
@@ -398,6 +399,74 @@ export class BrowserController {
     this.state.activeTabId = tabId;
     this.attachActiveView();
     this.persistAndEmit();
+  }
+
+  getActiveTabOrigin(tabId: string): string {
+    const activeTab = this.getActiveTab();
+    if (!activeTab || activeTab.id !== tabId || activeTab.isNewTab) {
+      throw new Error("The requested tab is not the active website tab.");
+    }
+    const view = this.getActiveView();
+    if (!view || view.webContents.isDestroyed()) throw new Error("The active website is unavailable.");
+    try {
+      return new URL(view.webContents.mainFrame.url).origin;
+    } catch {
+      throw new Error("The active website origin is invalid.");
+    }
+  }
+
+  async fillActiveCredential(
+    tabId: string,
+    credential: { username: string; password: string },
+    fillUsername: boolean,
+  ): Promise<PasswordFillResult> {
+    const origin = this.getActiveTabOrigin(tabId);
+    const view = this.getActiveView();
+    if (!view) throw new Error("The active website is unavailable.");
+    const payload = JSON.stringify({
+      username: credential.username,
+      password: credential.password,
+      fillUsername,
+    });
+    const result = await view.webContents.mainFrame.executeJavaScript(`(() => {
+      "use strict";
+      const data = ${payload};
+      const isVisible = (element) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.visibility !== "hidden" && style.display !== "none" && rect.width > 0 && rect.height > 0 && !element.disabled && !element.readOnly;
+      };
+      const setValue = (element, value) => {
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+        descriptor?.set?.call(element, value);
+        element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: null }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const passwords = [...document.querySelectorAll('input[type="password"]')].filter(isVisible);
+      const password = passwords[0];
+      if (!password) return { filledUsername: false, filledPassword: false };
+      let filledUsername = false;
+      if (data.fillUsername && data.username) {
+        const scope = password.form ?? document;
+        const candidates = [...scope.querySelectorAll('input[type="email"], input[autocomplete="username"], input[name*="user" i], input[name*="email" i], input[type="text"]')].filter(isVisible);
+        const username = candidates.find((element) => element !== password);
+        if (username) {
+          setValue(username, data.username);
+          filledUsername = true;
+        }
+      }
+      setValue(password, data.password);
+      password.focus();
+      return { filledUsername, filledPassword: true };
+    })()`, true) as { filledUsername?: boolean; filledPassword?: boolean };
+    if (this.getActiveTabOrigin(tabId) !== origin) {
+      throw new Error("The active website navigated during password fill.");
+    }
+    return {
+      filledUsername: Boolean(result?.filledUsername),
+      filledPassword: Boolean(result?.filledPassword),
+      origin,
+    };
   }
 
   nextTab(): void {
