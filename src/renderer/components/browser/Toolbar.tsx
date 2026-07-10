@@ -366,7 +366,7 @@ export function Toolbar({
               ref={suggestionsRef}
               id="address-suggestions"
               role="listbox"
-              className="glass-panel absolute left-0 right-0 top-[calc(100%+6px)] z-[85] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-1.5 text-foreground shadow-2xl shadow-black/35 backdrop-blur-xl"
+              className="glass-panel absolute left-0 right-0 top-[calc(100%+6px)] z-[85] max-h-[calc(100vh-180px)] overflow-y-auto rounded-2xl border border-border/70 bg-card/96 p-1.5 text-foreground shadow-2xl shadow-black/35 backdrop-blur-xl"
             >
               {suggestions.map((suggestion, index) => (
                 <button

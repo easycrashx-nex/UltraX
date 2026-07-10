@@ -698,6 +698,67 @@ test("address suggestions remain above web content with Settings open", async ()
   }
 });
 
+test("Quick Settings reserves its full native overlay region on remote pages", async () => {
+  const server = await startTestPageServer("<!doctype html><title>Quick Settings Layer Test</title><main>Remote content</main>");
+  const app = await launchUltraX();
+
+  try {
+    await app.page.evaluate((url) => (window as any).ultraX.navigate(url), server.url);
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.isLoading;
+    }).toBe(false);
+    await app.page.locator('[data-quick-settings-trigger="true"]').click();
+
+    const panel = app.page.getByRole("dialog", { name: "Quick Settings" });
+    await expect(panel).toBeVisible();
+    const panelBox = await panel.boundingBox();
+    const viewport = await app.page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    expect(panelBox).not.toBeNull();
+    expect(panelBox!.x).toBeGreaterThanOrEqual(0);
+    expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(panelBox!.y).toBeGreaterThanOrEqual(108);
+    expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(viewport.height);
+
+    const bounds = await app.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.contentView.children.map((child) => child.getBounds()) ?? []);
+    expect(bounds[0]?.x ?? -1).toBe(0);
+    expect((bounds[0]?.width ?? viewport.width) <= Math.ceil(panelBox!.x)).toBe(true);
+
+    await app.page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await expect.poll(async () => (await app.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.contentView.children[0]?.getBounds().width ?? 0))).toBe(viewport.width);
+  } finally {
+    await closeUltraX(app);
+    await server.close();
+  }
+});
+
+test("switching remote page to New Tab detaches the native view cleanly", async () => {
+  const server = await startTestPageServer("<!doctype html><title>New Tab Bounds Test</title><main>Remote content</main>");
+  const app = await launchUltraX();
+
+  try {
+    await app.page.evaluate((url) => (window as any).ultraX.navigate(url), server.url);
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.isLoading;
+    }).toBe(false);
+    await app.page.getByTestId("new-tab-button").click();
+    await expect(app.page.getByText("A clean browser shell with Chromium underneath.")).toBeVisible();
+    await expect.poll(async () => (await app.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.contentView.children.length ?? 0))).toBe(0);
+
+    await app.page.evaluate((url) => (window as any).ultraX.navigate(url), server.url);
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.isNewTab;
+    }).toBe(false);
+    await expect.poll(async () => (await app.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.contentView.children[0]?.getBounds().y ?? 0))).toBe(108);
+  } finally {
+    await closeUltraX(app);
+    await server.close();
+  }
+});
+
 test("extensions workspace is recreated on startup and when opening Extensions settings", async () => {
   const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "ultrax-e2e-extensions-"));
   const app = await launchUltraX(userDataDir);
@@ -732,7 +793,7 @@ test("updates page opens and renders current version controls", async () => {
     await app.page.getByTestId("settings-category-updates").click();
 
     await expect(app.page.getByText("Current version")).toBeVisible();
-    await expect(app.page.getByText(/UltraX Browser 1\.1\.[89]/)).toBeVisible();
+    await expect(app.page.getByText(/UltraX Browser (?:1\.1\.[89]|1\.1\.9-Fix)/).last()).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Check for Updates" })).toBeVisible();
     await expect(app.page.getByText(/SmartScreen warning until UltraX is code signed/i)).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Open Official Release" })).toBeVisible();

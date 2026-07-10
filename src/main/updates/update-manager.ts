@@ -3,6 +3,7 @@ import { autoUpdater, type ProgressInfo, type UpdateInfo } from "electron-update
 import { IPC } from "../../shared/ipc";
 import type { BrowserSettings, UpdateSettings, UpdateStatusSnapshot } from "../../shared/types";
 import { formatUpdateError } from "../../shared/update-errors";
+import { formatVisibleVersion } from "../../shared/version";
 
 const DEFAULT_RELEASES_URL = "https://github.com/easycrashx-nex/UltraX/releases";
 
@@ -31,7 +32,7 @@ export class UpdateManager {
     const settings = this.getUpdateSettings();
     this.snapshot = {
       status: "idle",
-      currentVersion: app.getVersion(),
+      currentVersion: formatVisibleVersion(app.getVersion()),
       channel: settings.channel,
       updateAvailable: false,
       lastCheckedAt: settings.lastCheckedAt,
@@ -176,11 +177,11 @@ export class UpdateManager {
       this.logUpdateEvent("update-available", info.version);
       const settings = this.getUpdateSettings();
       if (settings.notifyWhenAvailable && Notification.isSupported()) {
-        new Notification({ title: "UltraX update available", body: `Version ${info.version} is ready to download.` }).show();
+        new Notification({ title: "UltraX update available", body: `Version ${formatVisibleVersion(info.version)} is ready to download.` }).show();
       }
       this.updateSnapshot({
         status: settings.autoDownload ? "downloading" : "available",
-        latestVersion: info.version,
+        latestVersion: formatVisibleVersion(info.version),
         releaseName: optionalString(info.releaseName),
         releaseDate: optionalString(info.releaseDate),
         releaseNotes: releaseNotesToText(info.releaseNotes),
@@ -193,7 +194,7 @@ export class UpdateManager {
     this.on("update-not-available", ((info: UpdateInfo) => {
       UpdateManager.operation = undefined;
       this.logUpdateEvent("update-not-available", info.version);
-      this.updateSnapshot({ status: "not-available", latestVersion: info.version, releaseName: optionalString(info.releaseName), releaseDate: optionalString(info.releaseDate), releaseNotes: releaseNotesToText(info.releaseNotes), updateAvailable: false, canCheck: true, canDownload: false, canInstall: false });
+      this.updateSnapshot({ status: "not-available", latestVersion: formatVisibleVersion(info.version), releaseName: optionalString(info.releaseName), releaseDate: optionalString(info.releaseDate), releaseNotes: releaseNotesToText(info.releaseNotes), updateAvailable: false, canCheck: true, canDownload: false, canInstall: false });
     }) as (...args: never[]) => void);
     this.on("download-progress", ((progress: ProgressInfo) => {
       this.updateSnapshot({ status: "downloading", progress: { percent: clampPercent(progress.percent), transferred: progress.transferred, total: progress.total, bytesPerSecond: progress.bytesPerSecond }, canCheck: false, canDownload: false, canInstall: false });
@@ -201,7 +202,7 @@ export class UpdateManager {
     this.on("update-downloaded", ((info: UpdateInfo) => {
       UpdateManager.operation = undefined;
       this.logUpdateEvent("update-downloaded", info.version);
-      this.updateSnapshot({ status: "downloaded", latestVersion: info.version, releaseName: optionalString(info.releaseName), releaseDate: optionalString(info.releaseDate), releaseNotes: releaseNotesToText(info.releaseNotes), updateAvailable: true, progress: undefined, canCheck: true, canDownload: false, canInstall: true });
+      this.updateSnapshot({ status: "downloaded", latestVersion: formatVisibleVersion(info.version), releaseName: optionalString(info.releaseName), releaseDate: optionalString(info.releaseDate), releaseNotes: releaseNotesToText(info.releaseNotes), updateAvailable: true, progress: undefined, canCheck: true, canDownload: false, canInstall: true });
     }) as (...args: never[]) => void);
     this.on("error", ((error: Error) => {
       UpdateManager.operation = undefined;
@@ -216,7 +217,7 @@ export class UpdateManager {
 
   private updateSnapshot(patch: Partial<UpdateStatusSnapshot>): void {
     const settings = this.getUpdateSettings();
-    this.snapshot = { ...this.snapshot, ...patch, currentVersion: app.getVersion(), channel: settings.channel, releasesUrl: DEFAULT_RELEASES_URL, source: "github-releases" };
+    this.snapshot = { ...this.snapshot, ...patch, currentVersion: formatVisibleVersion(app.getVersion()), channel: settings.channel, releasesUrl: DEFAULT_RELEASES_URL, source: "github-releases" };
     if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) {
       this.window.webContents.send(IPC.updateStatusChanged, this.getStatus());
     }
@@ -227,7 +228,7 @@ function releaseNotesToText(value: UpdateInfo["releaseNotes"]): string | undefin
   if (!value) return undefined;
   if (typeof value === "string") return stripHtml(value).slice(0, 6000);
   if (Array.isArray(value)) {
-    return value.map((item) => `${item.version ? `Version ${item.version}` : "Release"}\n${stripHtml(item.note ?? "")}`).join("\n\n").slice(0, 6000);
+    return value.map((item) => `${item.version ? `Version ${formatVisibleVersion(item.version)}` : "Release"}\n${stripHtml(item.note ?? "")}`).join("\n\n").slice(0, 6000);
   }
   return undefined;
 }

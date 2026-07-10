@@ -25,6 +25,6 @@ Official releases: `https://github.com/easycrashx-nex/UltraX/releases`
 
 UltraX does not automatically install unsigned native code. Automatic update installation can return after releases use a trusted Windows code-signing certificate and packaged signature verification is enforced.
 
-Installed NSIS builds use the official GitHub provider and electron-updater. The v1.1.9 release publishes the matching `latest.yml`, NSIS blockmap, and installer, so v1.1.8 can detect and install v1.1.9 from Settings -> Updates. The update manager verifies HTTPS metadata and SHA-512 before `quitAndInstall`; it never starts a downloaded executable from the renderer.
+Installed NSIS builds use the official GitHub provider and electron-updater. The `v1.1.9-Fix` release publishes matching `latest.yml`, NSIS blockmap, and installer metadata. The update manager verifies HTTPS metadata and SHA-512 before `quitAndInstall`; it never starts a downloaded executable from the renderer.
 
 Code signing is still not configured. This means Windows SmartScreen warnings may remain even though the release metadata and downloaded bytes are integrity-checked. Portable builds do not participate in in-app installation.

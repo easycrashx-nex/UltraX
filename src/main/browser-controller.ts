@@ -1531,7 +1531,13 @@ export class BrowserController {
 
   private getActiveView(): WebContentsView | undefined {
     const activeTab = this.getActiveTab();
-    return activeTab ? this.views.get(activeTab.id) : undefined;
+    const view = activeTab ? this.views.get(activeTab.id) : undefined;
+    if (view?.webContents.isDestroyed()) {
+      this.views.delete(activeTab!.id);
+      if (this.attachedView === view) this.attachedView = null;
+      return undefined;
+    }
+    return view;
   }
 
   private attachActiveView(): void {
@@ -1552,30 +1558,42 @@ export class BrowserController {
   }
 
   private detachView(view: WebContentsView): void {
+    if (this.window.isDestroyed()) {
+      return;
+    }
+
     try {
       this.window.contentView.removeChildView(view);
-    } catch {
-      // The view may already be detached during tab close or window teardown.
+    } catch (error) {
+      if (!this.window.isDestroyed()) {
+        console.warn("Unable to detach browser view.", error instanceof Error ? error.message : error);
+      }
     }
   }
 
   private layoutActiveView(): void {
     const activeTab = this.getActiveTab();
     const view = activeTab?.error ? undefined : this.getActiveView();
-    if (!view) {
+    if (!view || this.window.isDestroyed() || view.webContents.isDestroyed()) {
       return;
     }
 
     const bounds = this.window.getContentBounds();
-    view.setBounds({
-      x: 0,
-      y: BASE_BROWSER_CHROME_HEIGHT + this.insets.top,
-      width: Math.max(0, bounds.width - this.insets.right),
-      height: Math.max(
-        0,
-        bounds.height - BASE_BROWSER_CHROME_HEIGHT - this.insets.top - this.insets.bottom,
-      ),
-    });
+    try {
+      view.setBounds({
+        x: 0,
+        y: BASE_BROWSER_CHROME_HEIGHT + this.insets.top,
+        width: Math.max(0, bounds.width - this.insets.right),
+        height: Math.max(
+          0,
+          bounds.height - BASE_BROWSER_CHROME_HEIGHT - this.insets.top - this.insets.bottom,
+        ),
+      });
+    } catch (error) {
+      if (!this.window.isDestroyed() && !view.webContents.isDestroyed()) {
+        console.warn("Unable to lay out browser view.", error instanceof Error ? error.message : error);
+      }
+    }
   }
 
   private patchTabFromContents(

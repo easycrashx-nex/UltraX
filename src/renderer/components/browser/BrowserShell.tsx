@@ -10,6 +10,7 @@ import type {
   UpdateStatusSnapshot,
 } from "@shared/types";
 import { resolveShortcutAction } from "@shared/shortcuts";
+import { calculateBrowserViewInsets, QUICK_SETTINGS_PANEL_WIDTH } from "@shared/browser-layout";
 import { AlertTriangle, RotateCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [addressSuggestionsInset, setAddressSuggestionsInset] = useState(0);
+  const [quickSettingsWidth, setQuickSettingsWidth] = useState(QUICK_SETTINGS_PANEL_WIDTH);
   const [restoreTabsNextClose, setRestoreTabsNextClose] = useState(
     state.settings.closeBehavior !== "close-and-discard-session",
   );
@@ -120,21 +122,24 @@ export function BrowserShell({ state }: BrowserShellProps) {
   }, [state.installedExtensions]);
 
   useEffect(() => {
-    const panelInset = settingsOpen
-      ? 980
-      : activePanel || extensionPanel
-        ? 392
-        : quickSettingsOpen
-          ? 368
-          : 0;
-    const rightInset = Math.max(panelInset, findOpen ? 380 : 0);
-
-    void window.ultraX.setViewInsets({
-      top: addressSuggestionsInset,
-      right: rightInset,
-      bottom: state.downloads.length > 0 ? 76 : 0,
+    const insets = calculateBrowserViewInsets({
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
+      topChromeHeight: 108,
+      bookmarksBarHeight: state.settings.showBookmarksBar ? 20 : 0,
+      quickSettingsOpen,
+      quickSettingsWidth,
+      sidePanelOpen: Boolean(activePanel || extensionPanel || findOpen),
+      sidePanelWidth: findOpen ? 380 : 392,
+      settingsOpen,
+      addressSuggestionsOpen: addressSuggestionsInset > 0,
+      addressSuggestionsHeight: addressSuggestionsInset,
+      downloadsOpen: state.downloads.length > 0,
+      activeTabType: activeTab?.isNewTab ? "new-tab" : settingsOpen ? "settings" : "remote",
     });
-  }, [activePanel, addressSuggestionsInset, extensionPanel, findOpen, quickSettingsOpen, settingsOpen, state.downloads.length]);
+
+    void window.ultraX.setViewInsets(insets);
+  }, [activePanel, activeTab?.isNewTab, addressSuggestionsInset, extensionPanel, findOpen, quickSettingsOpen, quickSettingsWidth, settingsOpen, state.downloads.length, state.settings.showBookmarksBar]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -332,6 +337,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
         runtimeInfo={runtimeInfo}
         updateStatus={updateStatus}
         onClose={() => setQuickSettingsOpen(false)}
+        onPanelWidthChange={setQuickSettingsWidth}
         onOpenSettings={openSettings}
         onUpdateSettings={(settings) => void window.ultraX.updateSettings(settings)}
         onOpenExtensionPanel={openExtensionPanel}

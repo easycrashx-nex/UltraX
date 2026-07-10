@@ -4,9 +4,10 @@ import path from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 
 const expectedVersion = packageJson.version;
+const expectedTag = "v1.1.9-Fix";
 const tag = process.argv.find((value) => value.startsWith("--tag="))?.slice(6) ?? process.env.GITHUB_REF_NAME;
-if (expectedVersion !== "1.1.9") throw new Error(`Release validation requires package version 1.1.9, got ${expectedVersion}.`);
-if (tag && tag !== "v1.1.9") throw new Error(`Release validation requires tag v1.1.9, got ${tag}.`);
+if (expectedVersion !== "1.1.9-fix.1") throw new Error(`Release validation requires package version 1.1.9-fix.1, got ${expectedVersion}.`);
+if (tag && tag !== expectedTag) throw new Error(`Release validation requires tag ${expectedTag}, got ${tag}.`);
 
 const releaseDir = path.resolve(process.env.ULTRAX_RELEASE_DIR ?? "release");
 const staleArtifacts = readdirNames(releaseDir).filter((name) => /UltraX-Browser-(?:Setup-)?1\.(?:0|1)\.(?:[0-8]|10)-/.test(name));
@@ -20,13 +21,14 @@ for (const name of required) {
 }
 
 const latest = readFileSync(path.join(releaseDir, "latest.yml"), "utf8");
-if (!/^version:\s*1\.1\.9\s*$/m.test(latest)) throw new Error("latest.yml does not describe v1.1.9.");
+const latestVersion = latest.match(/^version:\s*(\S+)\s*$/m)?.[1];
+if (latestVersion !== expectedVersion) throw new Error(`latest.yml does not describe ${expectedVersion}.`);
 const latestUrl = latest.split(/\r?\n/).find((line) => line.includes("url:"))?.match(/url:\s*(\S+)/)?.[1];
 if (latestUrl !== setup) throw new Error("latest.yml installer name does not match the NSIS artifact.");
 const expectedSha512 = createHash("sha512").update(readFileSync(path.join(releaseDir, setup))).digest("base64");
 const metadataSha512 = latest.match(/^\s*sha512:\s*(\S+)\s*$/m)?.[1];
 if (metadataSha512 !== expectedSha512) throw new Error("latest.yml SHA-512 does not match the installer.");
-if (/1\.1\.8|1\.1\.10|v1\.1\.8|v1\.1\.10/.test(latest)) throw new Error("latest.yml contains a wrong version reference.");
+if (/1\.1\.8|1\.1\.10|1\.2\.0|v1\.1\.8|v1\.1\.10|v1\.2\.0/.test(latest)) throw new Error("latest.yml contains a wrong version reference.");
 
 const appUpdatePath = path.join(releaseDir, "win-unpacked", "resources", "app-update.yml");
 if (existsSync(appUpdatePath)) {

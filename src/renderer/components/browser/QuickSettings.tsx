@@ -38,6 +38,7 @@ type QuickSettingsProps = {
   runtimeInfo: RuntimeInfo | null;
   updateStatus: UpdateStatusSnapshot | null;
   onClose: () => void;
+  onPanelWidthChange: (width: number) => void;
   onOpenSettings: (category?: SettingsCategoryId) => void;
   onUpdateSettings: (settings: Partial<BrowserSettings>) => void;
   onOpenExtensionPanel: (extensionId: string) => void;
@@ -62,6 +63,7 @@ export function QuickSettings({
   runtimeInfo,
   updateStatus,
   onClose,
+  onPanelWidthChange,
   onOpenSettings,
   onUpdateSettings,
   onOpenExtensionPanel,
@@ -71,6 +73,16 @@ export function QuickSettings({
 }: QuickSettingsProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [passwordStatus, setPasswordStatus] = useState<PasswordManagerStatus | null>(null);
+
+  useEffect(() => {
+    if (!open || !panelRef.current) return;
+    const panel = panelRef.current;
+    const updateWidth = () => onPanelWidthChange(Math.ceil(panel.getBoundingClientRect().width));
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(panel);
+    updateWidth();
+    return () => observer.disconnect();
+  }, [onPanelWidthChange, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -118,7 +130,7 @@ export function QuickSettings({
   return (
     <div
       ref={panelRef}
-      className="glass-panel settings-modal quick-settings-panel fixed right-4 top-[112px] z-50 max-h-[calc(100vh-128px)] w-[380px] overflow-hidden rounded-2xl p-3 text-foreground shadow-2xl shadow-black/45"
+      className="glass-panel settings-modal quick-settings-panel fixed right-4 top-[112px] z-50 flex max-h-[calc(100vh-128px)] w-[380px] flex-col overflow-hidden rounded-2xl p-3 text-foreground shadow-2xl shadow-black/45"
       role="dialog"
       aria-label="Quick Settings"
     >
@@ -140,7 +152,7 @@ export function QuickSettings({
         </Button>
       </div>
 
-      <div className="settings-scrollbar max-h-[calc(100vh-200px)] overflow-y-auto pr-1">
+      <div className="settings-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-background/35">
           <QuickSelectRow
             icon={<Moon aria-hidden="true" />}
@@ -226,15 +238,17 @@ export function QuickSettings({
 
         <QuickPluginsSection onManage={() => onOpenSettings("plugins")} />
 
+      </div>
+      <footer className="mt-3 shrink-0 border-t border-border/60 pt-3">
         <Button
           type="button"
-          className="mt-3 h-10 w-full rounded-xl"
+          className="h-10 w-full rounded-xl"
           onClick={() => onOpenSettings()}
         >
           <Settings aria-hidden="true" />
           Open Settings
         </Button>
-      </div>
+      </footer>
     </div>
   );
 }
@@ -251,7 +265,7 @@ function getAboutDetail(
     return "Restart to update";
   }
 
-  return runtimeInfo ? `UltraX Browser ${runtimeInfo.appVersion}` : "Version info";
+  return runtimeInfo ? `UltraX Browser ${runtimeInfo.appVersion}` : "UltraX Browser 1.1.9-Fix";
 }
 
 function hasUpdateAttention(updateStatus: UpdateStatusSnapshot | null): boolean {

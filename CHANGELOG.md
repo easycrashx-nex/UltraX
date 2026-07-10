@@ -1,5 +1,14 @@
 # UltraX Browser Changelog
 
+## 1.1.9-Fix - Quick Settings and New Tab Layout Fix
+
+- Fixed native `WebContentsView` bounds covering the left edge of Quick Settings on remote pages.
+- Added a central browser layout calculation for Quick Settings, side panels, suggestions, downloads, and New Tab transitions.
+- Fixed Quick Settings internal scrolling with a stable header and accessible footer action.
+- Fixed remote-view detachment and lifecycle guards when switching between websites and New Tab.
+- Fixed address suggestion max-height and overlay scrolling without pushing the New Tab surface.
+- Visible product label is `UltraX Browser 1.1.9-Fix`; internal package version is `1.1.9-fix.1`.
+
 ## 1.1.9 - In-App Updates and Release Hardening
 
 ### Security

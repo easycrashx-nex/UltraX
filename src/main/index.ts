@@ -12,6 +12,7 @@ import {
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { IPC } from "../shared/ipc";
+import { formatVisibleVersion } from "../shared/version";
 import { normalizeHttpOrigin } from "../shared/origin-policy";
 import { normalizeShortcutOverrides } from "../shared/shortcuts";
 import type {
@@ -1749,7 +1750,7 @@ function getRuntimeInfo(): RuntimeInfo {
 
   return {
     appName: app.getName(),
-    appVersion: app.getVersion(),
+    appVersion: formatVisibleVersion(app.getVersion()),
     electronVersion: process.versions.electron,
     chromiumVersion: process.versions.chrome,
     nodeVersion: process.versions.node,

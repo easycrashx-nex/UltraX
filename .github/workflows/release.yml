@@ -53,13 +53,18 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          $notes = "UltraX Browser v$version`n`nSee CHANGELOG.md for release notes and update details."
+          $notes = @"
+          UltraX Browser 1.1.9-Fix
+
+          Fixes Quick Settings clipping, native WebContentsView bounds, New Tab rendering, and address suggestion overlays.
+          The internal package version is $version. Portable builds remain manual.
+          "@
 
           gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --title $version --notes $notes
+            gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --title "1.1.9-Fix" --notes $notes
           } else {
-            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $version --notes $notes
+            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "1.1.9-Fix" --notes $notes
           }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          if ($env:GITHUB_REF_NAME -ne "v1.1.9") { throw "This release workflow is intentionally locked to v1.1.9." }
+          if ($env:GITHUB_REF_NAME -ne "v1.1.9-Fix") { throw "This release workflow is intentionally locked to v1.1.9-Fix." }
           $setup = "UltraX-Browser-Setup-$version-x64.exe"
           $portable = "UltraX-Browser-$version-Portable-x64.exe"
           $expected = @(
