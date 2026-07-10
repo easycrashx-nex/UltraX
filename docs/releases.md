@@ -5,7 +5,7 @@
 Use patch releases for focused improvements:
 
 ```powershell
-npm version 1.1.8 --no-git-tag-version
+npm version 1.1.9 --no-git-tag-version
 ```
 
 Update `CHANGELOG.md` before tagging.
@@ -24,7 +24,6 @@ Expected local artifacts:
 
 - `release/UltraX-Browser-Setup-<version>-x64.exe`
 - `release/UltraX-Browser-<version>-Portable-x64.exe`
-- `release/latest.yml`
 - `release/SHA256SUMS.txt`
 
 Do not commit `release/`.
@@ -44,8 +43,8 @@ Skip the command if `origin` already points to that URL.
 The release workflow runs on tags:
 
 ```powershell
-git tag v1.1.8
-git push origin v1.1.8
+git tag v1.1.9
+git push origin v1.1.9
 ```
 
 The workflow:
@@ -55,10 +54,9 @@ The workflow:
 - builds
 - packages Windows NSIS and Portable builds
 - creates or updates the GitHub Release through GitHub CLI
-- verifies packaged `app-update.yml` points to `easycrashx-nex/UltraX`
-- verifies `latest.yml` exists and references the Setup installer
+- runs unit, Electron E2E, and packaged extension-sandbox tests
 - generates SHA256 checksums
-- re-uploads installer, portable EXE, blockmap, `latest.yml`, and checksum files with `--clobber`
+- uploads installer, portable EXE, and checksum files with `--clobber`
 
 ## E2E Tests
 
@@ -83,18 +81,16 @@ For production signing, add:
 Do not commit signing certificates or passwords.
 See [windows-signing.md](windows-signing.md).
 
-## Auto-Updater Metadata
+## Manual Release Assets
 
-`electron-builder` generates update metadata for `electron-updater` when GitHub Releases are configured. The GitHub Actions workflow then uploads that metadata to the tagged GitHub Release.
-
-The Windows release must contain:
+Until trusted Windows code signing is configured, the release must contain:
 
 - `UltraX-Browser-Setup-<version>-x64.exe`
-- `UltraX-Browser-Setup-<version>-x64.exe.blockmap`
 - `UltraX-Browser-<version>-Portable-x64.exe`
-- `latest.yml`
 - `SHA256SUMS.txt`
 - individual `.sha256` files
+
+Do not upload `latest.yml` or blockmaps for unsigned releases. This prevents older automatic updater clients from installing unsigned native code.
 
 ## Production Checklist
 

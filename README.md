@@ -8,7 +8,7 @@ The project includes:
 - New Tab shader background
 - Bookmarks, history, downloads, privacy, performance, and accessibility controls
 - Native UltraX Extensions runtime with local sample extensions
-- GitHub Releases-ready update architecture
+- Read-only GitHub Releases update checks with manual verified installation
 - NSIS installer and portable Windows builds
 
 ## Requirements
@@ -46,12 +46,7 @@ Outputs are written to `release/` and should not be committed. Upload installers
 
 ## Updates
 
-UltraX supports two update paths:
-
-- In-app update checks through Settings -> Updates
-- Manual installer updates from GitHub Releases
-
-The in-app updater uses `electron-updater` with GitHub Releases from `easycrashx-nex/UltraX` once release assets are published.
+UltraX checks the official GitHub Releases API through Settings -> Updates. Until Windows releases are signed with a trusted certificate, installation is manual: download the Setup or Portable executable from `easycrashx-nex/UltraX` and verify its published SHA256 checksum.
 
 Read:
 

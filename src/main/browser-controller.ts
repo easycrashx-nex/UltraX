@@ -17,6 +17,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { IPC } from "../shared/ipc";
 import { BASE_BROWSER_CHROME_HEIGHT } from "../shared/browser-layout";
+import { normalizeHttpOrigin } from "../shared/origin-policy";
+import {
+  createSafeRecord,
+  isValidExtensionStorageKey,
+} from "../shared/extension-identifiers";
 import type {
   Bookmark,
   BookmarkDuplicatePolicy,
@@ -43,6 +48,8 @@ import type {
 } from "../shared/types";
 import type { PasswordFillResult } from "../shared/password-manager";
 import { resolveShortcutAction } from "../shared/shortcuts";
+import { executeInBoundCredentialFrame } from "./password-manager/fill-target";
+import { resolveSafeDownloadPath } from "./download-path";
 import {
   getHostnameLabel,
   INTERNAL_NEW_TAB_URL,
@@ -417,18 +424,27 @@ export class BrowserController {
 
   async fillActiveCredential(
     tabId: string,
+    expectedOrigin: string,
     credential: { username: string; password: string },
     fillUsername: boolean,
   ): Promise<PasswordFillResult> {
-    const origin = this.getActiveTabOrigin(tabId);
-    const view = this.getActiveView();
-    if (!view) throw new Error("The active website is unavailable.");
+    if (this.getActiveTabOrigin(tabId) !== expectedOrigin) {
+      throw new Error("The active website navigated during password fill.");
+    }
+    const view = this.views.get(tabId);
+    if (!view || view.webContents.isDestroyed()) {
+      throw new Error("The active website is unavailable.");
+    }
+    const frame = view.webContents.mainFrame;
     const payload = JSON.stringify({
       username: credential.username,
       password: credential.password,
       fillUsername,
     });
-    const result = await view.webContents.mainFrame.executeJavaScript(`(() => {
+    const result = await executeInBoundCredentialFrame<{
+      filledUsername?: boolean;
+      filledPassword?: boolean;
+    }>(frame, expectedOrigin, `(() => {
       "use strict";
       const data = ${payload};
       const isVisible = (element) => {
@@ -458,14 +474,18 @@ export class BrowserController {
       setValue(password, data.password);
       password.focus();
       return { filledUsername, filledPassword: true };
-    })()`, true) as { filledUsername?: boolean; filledPassword?: boolean };
-    if (this.getActiveTabOrigin(tabId) !== origin) {
+    })()`);
+    if (
+      this.views.get(tabId) !== view ||
+      view.webContents.mainFrame !== frame ||
+      this.getActiveTabOrigin(tabId) !== expectedOrigin
+    ) {
       throw new Error("The active website navigated during password fill.");
     }
     return {
       filledUsername: Boolean(result?.filledUsername),
       filledPassword: Boolean(result?.filledPassword),
-      origin,
+      origin: expectedOrigin,
     };
   }
 
@@ -1702,28 +1722,29 @@ export class BrowserController {
       case "storage.get": {
         this.requireExtensionPermission(extension, "storage");
         const key = this.readExtensionStorageKey(args[0]);
-        return structuredClone(this.state.extensionStorage[extension.id]?.[key] ?? null);
+        const bucket = this.getExtensionStorageBucket(extension.id, false);
+        return structuredClone(bucket && Object.hasOwn(bucket, key) ? bucket[key] : null);
       }
 
       case "storage.set": {
         this.requireExtensionPermission(extension, "storage");
         const key = this.readExtensionStorageKey(args[0]);
         const value = this.readJsonSerializableValue(args[1]);
-        this.state.extensionStorage[extension.id] ??= {};
-        this.state.extensionStorage[extension.id][key] = value;
+        this.getExtensionStorageBucket(extension.id, true)![key] = value;
         return null;
       }
 
       case "storage.remove": {
         this.requireExtensionPermission(extension, "storage");
         const key = this.readExtensionStorageKey(args[0]);
-        delete this.state.extensionStorage[extension.id]?.[key];
+        const bucket = this.getExtensionStorageBucket(extension.id, false);
+        if (bucket && Object.hasOwn(bucket, key)) delete bucket[key];
         return null;
       }
 
       case "storage.clear": {
         this.requireExtensionPermission(extension, "storage");
-        this.state.extensionStorage[extension.id] = {};
+        this.state.extensionStorage[extension.id] = createSafeRecord<unknown>();
         return null;
       }
 
@@ -1775,11 +1796,22 @@ export class BrowserController {
     }
 
     const key = value.trim();
-    if (!/^[a-zA-Z0-9_.:-]{1,80}$/.test(key)) {
+    if (!isValidExtensionStorageKey(key)) {
       throw new Error("Extension storage key contains unsupported characters.");
     }
 
     return key;
+  }
+
+  private getExtensionStorageBucket(
+    extensionId: string,
+    create: boolean,
+  ): Record<string, unknown> | undefined {
+    if (!Object.hasOwn(this.state.extensionStorage, extensionId)) {
+      if (!create) return undefined;
+      this.state.extensionStorage[extensionId] = createSafeRecord<unknown>();
+    }
+    return this.state.extensionStorage[extensionId];
   }
 
   private readJsonSerializableValue(value: unknown): unknown {
@@ -1880,7 +1912,9 @@ export class BrowserController {
       return;
     }
 
-    const filename = item.getFilename() || path.basename(item.getURL()) || "download";
+    const suggestedFilename = item.getFilename() || path.basename(item.getURL()) || "download";
+    const downloadDirectory = this.resolveDownloadDirectory();
+    const { filename, savePath } = resolveSafeDownloadPath(downloadDirectory, suggestedFilename);
     if (!this.confirmDownloadPermission(item.getURL(), filename)) {
       item.cancel();
       return;
@@ -1891,13 +1925,12 @@ export class BrowserController {
       return;
     }
 
-    const downloadDirectory = this.resolveDownloadDirectory();
     if (this.state.settings.askWhereToSaveDownloads) {
       item.setSaveDialogOptions({
-        defaultPath: path.join(downloadDirectory, filename),
+        defaultPath: savePath,
       });
     } else {
-      item.setSavePath(path.join(downloadDirectory, filename));
+      item.setSavePath(savePath);
     }
 
     const download: DownloadItem = {
@@ -1937,8 +1970,8 @@ export class BrowserController {
   }
 
   private confirmDownloadPermission(url: string, filename: string): boolean {
-    const host = this.getHostFromUrl(url);
-    const policy = this.getSitePermissionPolicy(host, "downloads");
+    const origin = normalizeHttpOrigin(url);
+    const policy = this.getSitePermissionPolicy(origin, "downloads");
     if (policy === "allow") {
       return true;
     }
@@ -1952,7 +1985,7 @@ export class BrowserController {
       buttons: ["Allow", "Block"],
       defaultId: 1,
       cancelId: 1,
-      message: `Allow download from ${host || "this site"}?`,
+      message: `Allow download from ${origin || "this site"}?`,
       detail: filename,
     });
 
@@ -1982,8 +2015,8 @@ export class BrowserController {
   }
 
   private confirmPopupPermission(url: string): boolean {
-    const host = this.getHostFromUrl(url);
-    const policy = this.getSitePermissionPolicy(host, "popups");
+    const origin = normalizeHttpOrigin(url);
+    const policy = this.getSitePermissionPolicy(origin, "popups");
     if (policy === "allow") {
       return true;
     }
@@ -1997,7 +2030,7 @@ export class BrowserController {
       buttons: ["Allow", "Block"],
       defaultId: 1,
       cancelId: 1,
-      message: `Allow pop-up from ${host || "this site"}?`,
+      message: `Allow pop-up from ${origin || "this site"}?`,
       detail: url,
     });
 
@@ -2005,21 +2038,13 @@ export class BrowserController {
   }
 
   private getSitePermissionPolicy(
-    host: string,
+    origin: string,
     permission: BrowserSettings["sitePermissionExceptions"][number]["permission"],
   ): BrowserSettings["sitePermissionExceptions"][number]["policy"] {
     const exception = this.state.settings.sitePermissionExceptions.find(
-      (item) => item.host === host && item.permission === permission,
+      (item) => item.origin === origin && item.permission === permission,
     );
     return exception?.policy ?? this.state.settings.permissionPolicy[permission] ?? "block";
-  }
-
-  private getHostFromUrl(url: string): string {
-    try {
-      return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-    } catch {
-      return "";
-    }
   }
 
   private persistAndEmit(): void {

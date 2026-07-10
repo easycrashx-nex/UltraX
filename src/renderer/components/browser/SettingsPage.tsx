@@ -27,6 +27,7 @@ import type {
   UltraXExtensionPermission,
   UpdateStatusSnapshot,
 } from "@shared/types";
+import { normalizeHttpOrigin } from "@shared/origin-policy";
 import {
   Accessibility,
   Activity,
@@ -467,18 +468,6 @@ function parseSiteExceptions(value: string): string[] {
     .slice(0, 24);
 }
 
-function normalizeSiteHost(value: string): string {
-  const host =
-    value
-      .trim()
-      .toLowerCase()
-      .replace(/^https?:\/\//, "")
-      .split(/[/?#]/)[0]
-      ?.replace(/^www\./, "") ?? "";
-
-  return /^[a-z0-9.-]{1,253}$/.test(host) ? host : "";
-}
-
 export function SettingsPage({
   open,
   activeCategory,
@@ -593,7 +582,7 @@ export function SettingsPage({
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold">UltraX Settings</h1>
             <p className="truncate text-xs text-muted-foreground">
-              v1.1.8 scrollable tabs and secure local password vault.
+              v1.1.9 security hardening for passwords, permissions, extensions, downloads, and updates.
             </p>
           </div>
         </div>
@@ -844,7 +833,7 @@ function CategoryContent({
     generatedAt: new Date().toISOString(),
     app: {
       name: runtimeInfo?.appName ?? "UltraX",
-      version: runtimeInfo?.appVersion ?? "1.1.8",
+      version: runtimeInfo?.appVersion ?? "1.1.9",
       electron: runtimeInfo?.electronVersion ?? "Unknown",
       chromium: runtimeInfo?.chromiumVersion ?? "Unknown",
       node: runtimeInfo?.nodeVersion ?? "Unknown",
@@ -1056,7 +1045,7 @@ function CategoryContent({
         JSON.stringify(
           {
             exportedAt: new Date().toISOString(),
-            appVersion: runtimeInfo?.appVersion ?? "1.1.8",
+            appVersion: runtimeInfo?.appVersion ?? "1.1.9",
             settings,
           },
           null,
@@ -1075,28 +1064,28 @@ function CategoryContent({
   };
 
   const addPermissionException = () => {
-    const host = normalizeSiteHost(permissionHost);
-    if (!host) {
-      setSecurityNotice("Enter a valid site such as example.com.");
+    const origin = normalizeHttpOrigin(permissionHost, true);
+    if (!origin) {
+      setSecurityNotice("Enter a valid origin such as https://example.com.");
       return;
     }
 
     const nextExceptions = [
       {
-        id: `${host}-${permissionType}`,
-        host,
+        id: `${origin}-${permissionType}`,
+        origin,
         permission: permissionType,
         policy: permissionExceptionPolicy,
         updatedAt: Date.now(),
       },
       ...settings.sitePermissionExceptions.filter(
-        (item) => !(item.host === host && item.permission === permissionType),
+        (item) => !(item.origin === origin && item.permission === permissionType),
       ),
     ].slice(0, 80);
 
     onUpdateSettings({ sitePermissionExceptions: nextExceptions });
     setPermissionHost("");
-    setSecurityNotice(`${host} exception saved.`);
+    setSecurityNotice(`${origin} exception saved.`);
   };
 
   const removePermissionException = (exceptionId: string) => {
@@ -1204,14 +1193,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset UltraX settings"
-              detail="Restore preferences to the v1.1.8 defaults."
+              detail="Restore preferences to the v1.1.9 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset all UltraX settings?",
-                  "This restores preferences to the v1.1.8 defaults.",
+                  "This restores preferences to the v1.1.9 defaults.",
                   "Reset",
                   onResetSettings,
                 )
@@ -1220,7 +1209,7 @@ function CategoryContent({
           </SettingSection>
           <StatusCard
             title="Release status"
-            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.8"} is running in ${
+            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.9"} is running in ${
               runtimeInfo?.buildType ?? "development"
             } mode.`}
             icon={<Sparkles aria-hidden="true" />}
@@ -1957,14 +1946,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset security settings"
-              detail="Restores only security preferences to the v1.1.8 defaults."
+              detail="Restores only security preferences to the v1.1.9 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset security settings?",
-                  "Only Security page preferences will return to the v1.1.8 defaults.",
+                  "Only Security page preferences will return to the v1.1.9 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultSecuritySettings),
                 )
@@ -2017,7 +2006,7 @@ function CategoryContent({
           <SettingSection title="Site Exceptions" detail="Per-site permission decisions override the defaults above.">
             <TextRow
               label="Site"
-              detail="Use a hostname such as example.com."
+              detail="Use an origin such as https://example.com or https://example.com:8443."
               value={permissionHost}
               onChange={setPermissionHost}
             />
@@ -2052,7 +2041,7 @@ function CategoryContent({
               settings.sitePermissionExceptions.map((exception) => (
                 <div key={exception.id} className="settings-row">
                   <RowText
-                    label={`${exception.host} - ${permissionLabels[exception.permission]}`}
+                    label={`${exception.origin} - ${permissionLabels[exception.permission]}`}
                     detail={permissionPolicyLabels[exception.policy]}
                   />
                   <Button
@@ -2087,7 +2076,7 @@ function CategoryContent({
             )}
           </SettingSection>
 
-          <SettingSection title="Runtime Coverage" detail="What is enforced in v1.1.8 and what stays under Chromium defaults.">
+          <SettingSection title="Runtime Coverage" detail="What is enforced in v1.1.9 and what stays under Chromium defaults.">
             <InfoRow label="Electron permission prompts" detail="Camera, microphone, location, notifications, and clipboard use UltraX Allow/Block prompts with optional remembering." />
             <InfoRow label="Downloads" detail="Download permission defaults are enforced before the file is saved." />
             <InfoRow label="Pop-ups" detail="Unsafe windows are denied. Safe window-open requests become UltraX tabs." />
@@ -2223,7 +2212,7 @@ function CategoryContent({
             <ComingSoonRow label="Add profile" detail="Separate profile storage is planned for v1.1." />
             <ComingSoonRow label="Guest mode" detail="Requires a separate temporary session partition." />
           </SettingSection>
-          <EmptyFeature title="Profiles are coming next" detail="v1.1.8 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
+          <EmptyFeature title="Profiles are coming next" detail="v1.1.9 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
         </>
       );
 
@@ -2249,7 +2238,7 @@ function CategoryContent({
             <InfoRow label="What extensions are" detail="Browser-level add-ons with scoped permissions for tabs, sidebar, and local browser features." />
             <ComingSoonRow label="Plugin marketplace" detail="Requires signed native module loading and a separate trust boundary." />
           </SettingSection>
-          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.1.8 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
+          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.1.9 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
         </>
       );
 
@@ -2849,7 +2838,7 @@ function CategoryContent({
           )}
 
           <SettingSection title="Diagnostics" detail="Local performance information safe to copy or export.">
-            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.8"}`} />
+            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.9"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2887,14 +2876,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset performance settings"
-              detail="Restores only this Performance page to v1.1.8 defaults."
+              detail="Restores only this Performance page to v1.1.9 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset performance settings?",
-                  "Only the Performance page settings will return to the v1.1.8 defaults.",
+                  "Only the Performance page settings will return to the v1.1.9 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultPerformanceSettings),
                 )
@@ -2977,7 +2966,7 @@ function CategoryContent({
                 ["extra-large", "Extra Large"],
               ]}
             />
-            <InfoRow label="UI Scale" detail="Planned after responsive layout testing; Text Size is safe in v1.1.8." />
+            <InfoRow label="UI Scale" detail="Planned after responsive layout testing; Text Size is safe in v1.1.9." />
             <RangeRow
               label="Default page zoom"
               detail={`${Math.round(settings.pageZoom * 100)}% for web pages.`}
@@ -3061,7 +3050,7 @@ function CategoryContent({
             onAction={() =>
               requestConfirm(
                 "Reset all UltraX settings?",
-                "This restores preferences to the v1.1.8 defaults.",
+                "This restores preferences to the v1.1.9 defaults.",
                 "Reset",
                 onResetSettings,
               )
@@ -3074,7 +3063,7 @@ function CategoryContent({
     case "updates": {
       const update = updateStatus ?? {
         status: "idle",
-        currentVersion: runtimeInfo?.appVersion ?? "1.1.8",
+        currentVersion: runtimeInfo?.appVersion ?? "1.1.9",
         channel: settings.updates.channel,
         updateAvailable: false,
         lastCheckedAt: settings.updates.lastCheckedAt,
@@ -3118,16 +3107,6 @@ function CategoryContent({
               }
             />
             <SwitchRow
-              label="Auto-download updates"
-              detail="Downloads available updates after a check. Installation still requires confirmation."
-              checked={settings.updates.autoDownload}
-              onChange={(checked) =>
-                onUpdateSettings({
-                  updates: { ...settings.updates, autoDownload: checked },
-                })
-              }
-            />
-            <SwitchRow
               label="Notify when available"
               detail="Keeps update notifications subtle and user-controlled."
               checked={settings.updates.notifyWhenAvailable}
@@ -3139,21 +3118,15 @@ function CategoryContent({
             />
           </SettingSection>
 
-          <SettingSection title="In-App Update" detail="Manual check, download progress, and restart controls.">
+          <SettingSection title="Secure Updates" detail="Version checks with manual installation from the official GitHub Release.">
             <InfoRow label="Status" detail={formatUpdateStatus(update)} />
             <InfoRow label="Latest version" detail={update.latestVersion ?? "Not checked yet"} />
             <InfoRow label="Last checked" detail={formatTimestamp(update.lastCheckedAt)} />
             <InfoRow label="Update source" detail={update.releasesUrl} />
-            {update.progress && (
-              <>
-                <InfoRow
-                  label="Download progress"
-                  detail={`${Math.round(update.progress.percent)}% - ${formatBytes(update.progress.transferred)} of ${formatBytes(update.progress.total)}`}
-                />
-                <InfoRow label="Download speed" detail={`${formatBytes(update.progress.bytesPerSecond)}/s`} />
-                <InfoRow label="Download size" detail={formatBytes(update.progress.total)} />
-              </>
-            )}
+            <InfoRow
+              label="Installation"
+              detail="Manual until UltraX Windows releases use a trusted code-signing certificate."
+            />
             {update.error && <InfoRow label="Update error" detail={update.error} />}
             <InlineActions>
               <Button
@@ -3169,28 +3142,6 @@ function CategoryContent({
               </Button>
               <Button
                 type="button"
-                variant="outline"
-                size="sm"
-                disabled={!update.canDownload}
-                onClick={() => runUpdateAction(onDownloadUpdate, "Update download started.")}
-                className="rounded-xl"
-              >
-                <Download aria-hidden="true" />
-                Download Update
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!update.canInstall}
-                onClick={() => runUpdateAction(onInstallUpdate, "UltraX is restarting to update.")}
-                className="rounded-xl"
-              >
-                <RefreshCw aria-hidden="true" />
-                Install and Restart
-              </Button>
-              <Button
-                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() =>
@@ -3203,7 +3154,7 @@ function CategoryContent({
                 className="rounded-xl"
               >
                 <Globe2 aria-hidden="true" />
-                Releases
+                Open Official Release
               </Button>
             </InlineActions>
           </SettingSection>
@@ -3222,14 +3173,14 @@ function CategoryContent({
 
           <StatusCard
             title="Manual installer updates still work"
-            detail="You can always download the latest Setup EXE from GitHub Releases and run it manually. In-app updates use the same trusted release feed."
+            detail="Download the latest Setup EXE from the official GitHub Release and verify its published SHA256 checksum before running it."
             icon={<Download aria-hidden="true" />}
           />
 
           <SettingSection title="Release Security" detail="What is prepared now and what still needs production setup.">
-            <InfoRow label="Provider" detail="GitHub Releases via electron-updater." />
-            <InfoRow label="Install behavior" detail="Never installs silently; restart requires user action." />
-            <InfoRow label="Code signing" detail="Not configured yet. Unsigned builds may trigger Windows SmartScreen." />
+            <InfoRow label="Provider" detail="Read-only GitHub Releases API over HTTPS." />
+            <InfoRow label="Install behavior" detail="Manual installer only; UltraX does not download or execute update binaries." />
+            <InfoRow label="Code signing" detail="Not configured yet. Automatic installation stays disabled." />
           </SettingSection>
         </>
       );
@@ -3239,7 +3190,7 @@ function CategoryContent({
       return (
         <>
           <SettingSection title="About UltraX" detail="Build and engine information.">
-            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.8"}`} />
+            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.9"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -3254,8 +3205,8 @@ function CategoryContent({
             <InfoRow label="License" detail="Project-local MVP placeholder." />
           </SettingSection>
           <StatusCard
-            title="UltraX Browser v1.1.8"
-            detail="Adds readable scrollable tabs and an authenticated local password vault with strict website and extension isolation."
+            title="UltraX Browser v1.1.9"
+            detail="Hardens credential fill, site permissions, extension storage, downloads, and release delivery."
             icon={<Sparkles aria-hidden="true" />}
           />
         </>

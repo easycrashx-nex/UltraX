@@ -1,47 +1,28 @@
 # Updating UltraX
 
-UltraX supports two update paths.
+## Check for updates
 
-## In-App Updates
+1. Open UltraX Settings.
+2. Go to Updates.
+3. Select the Stable channel.
+4. Click Check for Updates.
+5. If a newer version exists, open the official release from the displayed button.
 
-1. Open UltraX.
-2. Open Settings.
-3. Go to Updates.
-4. Select the Stable channel.
-5. Click Check.
-6. If an update is available, click Download.
-7. After download, click Restart to install.
+The check reads release metadata from the official GitHub Releases API. It does not download or execute an installer.
 
-UltraX never installs an update silently. Restart/install requires user action.
+## Install an update
 
-## Manual Installer Updates
+1. Download `UltraX-Browser-Setup-<version>-x64.exe` from the official release.
+2. Download or open `SHA256SUMS.txt` from the same release.
+3. Verify the installer with `Get-FileHash -Algorithm SHA256`.
+4. Run the installer and keep the existing install location.
 
-You can also update manually:
+The Portable executable can be downloaded and verified in the same way.
 
-1. Open the UltraX GitHub Releases page.
-2. Download the newest `UltraX-Browser-Setup-<version>-x64.exe`.
-3. Run the installer.
-4. Keep the existing install location unless you intentionally want to move it.
+Official releases: `https://github.com/easycrashx-nex/UltraX/releases`
 
-The portable EXE can also be downloaded and run directly.
-Use `SHA256SUMS.txt` from the release if you want to verify downloaded artifacts.
+## Why installation is manual
 
-## Current Release Source
+UltraX does not automatically install unsigned native code. Automatic update installation can return after releases use a trusted Windows code-signing certificate and packaged signature verification is enforced.
 
-UltraX uses GitHub Releases from:
-
-```txt
-https://github.com/easycrashx-nex/UltraX/releases
-```
-
-Packaged Windows builds include `app-update.yml` pointing at `easycrashx-nex/UltraX`. The release feed must include `latest.yml`, the Setup EXE, and the Setup blockmap for in-app updates to work.
-
-## Development Limitation
-
-In-app update checks require a packaged build with release metadata. Running from `npm run dev` or `electron .` will report that update checks require a packaged UltraX build.
-
-## Testing the Real Update Flow
-
-To test production updates, install an older packaged build such as UltraX Browser `1.1.1`, publish a newer release such as `v1.1.2`, then open Settings > Updates in the older app and use Check for Updates, Download Update, and Install and Restart.
-
-If the installed app is already on the same version as the newest GitHub Release, the updater should correctly report that UltraX is up to date.
+The transition from v1.1.8 to v1.1.9 is intentionally manual. The v1.1.9 release does not publish `latest.yml` or a blockmap, preventing older unsigned auto-updaters from installing it automatically.

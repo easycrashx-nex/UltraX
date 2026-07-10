@@ -321,10 +321,10 @@ export function PasswordManagerSettings({ settings, onUpdateSettings }: Props) {
 
       {notice && <Notice text={notice} />}
 
-      <SettingsBlock title="Saving & Autofill" detail="Only explicit user-triggered top-level fill is enabled in v1.1.8.">
+      <SettingsBlock title="Saving & Autofill" detail="Only explicit user-triggered top-level fill is enabled in v1.1.9.">
         <ToggleLine label="Offer autofill" detail="Allow Fill on exact saved HTTPS origins." checked={settings.passwordManager.offerAutofill} onChange={(checked) => updatePasswordSettings(settings, onUpdateSettings, { offerAutofill: checked })} />
         <ToggleLine label="Fill usernames with passwords" detail="Username fill remains part of the same explicit click action." checked={settings.passwordManager.autofillUsername} onChange={(checked) => updatePasswordSettings(settings, onUpdateSettings, { autofillUsername: checked })} />
-        <InfoLine label="Automatic save prompts" detail="Excluded from v1.1.8 until an isolated, audited form-event bridge exists. UltraX does not capture submissions silently." />
+        <InfoLine label="Automatic save prompts" detail="Excluded from v1.1.9 until an isolated, audited form-event bridge exists. UltraX does not capture submissions silently." />
         <InfoLine label="HTTP and iframe policy" detail="Password fill is blocked on HTTP and never targets child frames." />
       </SettingsBlock>
 
@@ -355,7 +355,7 @@ export function PasswordManagerSettings({ settings, onUpdateSettings }: Props) {
         </div>
       </SettingsBlock>
 
-      <SettingsBlock title="Data" detail="CSV import is explicit and encrypted backup is the only export format in v1.1.8.">
+      <SettingsBlock title="Data" detail="CSV import is explicit and encrypted backup is the only export format in v1.1.9.">
         <ActionLine icon={<Upload />} label="Import password CSV" detail="Shows plaintext warnings, validates up to 5 MB, then encrypts accepted records." action="Import" onClick={() => void run(async () => { const result = await window.ultraX.passwordManager.importCsv(); if (result) { await refreshItems(); setNotice(`Imported ${result.imported}; skipped ${result.skipped}; failed ${result.failed}. Securely delete ${result.sourceFileName}.`); } })} />
         <div className="grid gap-2 border-t border-border/60 p-4 md:grid-cols-[1fr_auto_auto] md:items-end">
           <SecretField label="Encrypted backup password" value={backupPassword} onChange={setBackupPassword} />

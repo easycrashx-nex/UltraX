@@ -206,6 +206,9 @@ function GenericExtensionIframe({
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) {
+        return;
+      }
       const message = event.data as Partial<ExtensionApiRequest> & {
         type?: unknown;
         extensionId?: unknown;
@@ -260,6 +263,8 @@ function GenericExtensionIframe({
       title={`${descriptor.title} panel`}
       className="h-full w-full border-0 bg-background"
       src={frameUrl}
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
     />
   );
 }

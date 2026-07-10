@@ -12,6 +12,7 @@ import {
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { IPC } from "../shared/ipc";
+import { normalizeHttpOrigin } from "../shared/origin-policy";
 import { normalizeShortcutOverrides } from "../shared/shortcuts";
 import type {
   BrowserSettings,
@@ -233,7 +234,7 @@ function configureSecurity(): void {
       defaultId: 1,
       cancelId: 1,
       checkboxLabel: "Remember for this site",
-      message: `Allow ${decision.host} to use ${formatPermissionKeys(decision.keys)}?`,
+        message: `Allow ${decision.origin} to use ${formatPermissionKeys(decision.keys)}?`,
       detail:
         "UltraX will only remember this choice for this site if you enable the checkbox.",
     };
@@ -246,7 +247,7 @@ function configureSecurity(): void {
         const allowed = result.response === 0;
         if (result.checkboxChecked) {
           rememberPermissionDecision(
-            decision.host,
+            decision.origin,
             decision.keys,
             allowed ? "allow" : "block",
           );
@@ -272,22 +273,24 @@ function resolveSitePermissionDecision(
   permission: string,
   origin: string,
   details?: unknown,
-): { host: string; keys: SitePermissionKey[]; policy: PermissionPolicy } | null {
-  const host = getPermissionHost(origin);
+): { origin: string; keys: SitePermissionKey[]; policy: PermissionPolicy } | null {
+  const normalizedOrigin = normalizeHttpOrigin(origin);
   const keys = getSitePermissionKeys(permission, details);
-  if (!host || keys.length === 0) {
+  if (!normalizedOrigin || keys.length === 0) {
     return null;
   }
 
   const settings = storage.load().settings;
-  const policies = keys.map((key) => resolvePermissionPolicyForHost(settings, host, key));
+  const policies = keys.map((key) =>
+    resolvePermissionPolicyForOrigin(settings, normalizedOrigin, key),
+  );
   const policy = policies.includes("block")
     ? "block"
     : policies.every((item) => item === "allow")
       ? "allow"
       : "ask";
 
-  return { host, keys, policy };
+  return { origin: normalizedOrigin, keys, policy };
 }
 
 function getSitePermissionKeys(permission: string, details?: unknown): SitePermissionKey[] {
@@ -316,40 +319,31 @@ function getSitePermissionKeys(permission: string, details?: unknown): SitePermi
   return key ? [key] : [];
 }
 
-function resolvePermissionPolicyForHost(
+function resolvePermissionPolicyForOrigin(
   settings: BrowserSettings,
-  host: string,
+  origin: string,
   permission: SitePermissionKey,
 ): PermissionPolicy {
   const exception = settings.sitePermissionExceptions.find(
-    (item) => item.host === host && item.permission === permission,
+    (item) => item.origin === origin && item.permission === permission,
   );
   return exception?.policy ?? settings.permissionPolicy[permission] ?? "block";
 }
 
-function getPermissionHost(origin: string): string {
-  try {
-    const parsed = new URL(origin);
-    return parsed.hostname.toLowerCase().replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
 function rememberPermissionDecision(
-  host: string,
+  origin: string,
   keys: SitePermissionKey[],
   policy: PermissionPolicy,
 ): void {
   const state = storage.load();
   const existing = state.settings.sitePermissionExceptions.filter(
-    (item) => !(item.host === host && keys.includes(item.permission)),
+    (item) => !(item.origin === origin && keys.includes(item.permission)),
   );
   const now = Date.now();
   state.settings.sitePermissionExceptions = [
     ...keys.map((key) => ({
       id: randomUUID(),
-      host,
+      origin,
       permission: key,
       policy,
       updatedAt: now,
@@ -632,7 +626,12 @@ function registerIpcHandlers(): void {
     if (!settings.offerAutofill) throw new Error("Password fill is disabled in Settings.");
     const origin = record.controller.getActiveTabOrigin(fillRequest.tabId);
     return passwordManager.withCredentialForOrigin(fillRequest.itemId, origin, (credential) =>
-      record.controller.fillActiveCredential(fillRequest.tabId, credential, settings.autofillUsername),
+      record.controller.fillActiveCredential(
+        fillRequest.tabId,
+        origin,
+        credential,
+        settings.autofillUsername,
+      ),
     );
   });
   handle(IPC.passwordManagerHealth, () => passwordManager.health());
@@ -1413,7 +1412,7 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
 
     patch.updates = {
       autoCheck: readBoolean(updates.autoCheck, "auto-check update setting"),
-      autoDownload: readBoolean(updates.autoDownload, "auto-download update setting"),
+      autoDownload: false,
       notifyWhenAvailable: readBoolean(
         updates.notifyWhenAvailable,
         "update notification setting",
@@ -1698,14 +1697,12 @@ function readPermissionExceptions(value: unknown): BrowserSettings["sitePermissi
     }
 
     const candidate = item as Partial<BrowserSettings["sitePermissionExceptions"][number]>;
-    const host = readString(candidate.host, "permission exception host", 253)
-      .trim()
-      .toLowerCase()
-      .replace(/^https?:\/\//, "")
-      .split(/[/?#]/)[0]
-      ?.replace(/^www\./, "");
-    if (!host || !/^[a-z0-9.-]{1,253}$/.test(host)) {
-      throw new Error("Invalid permission exception host.");
+    const origin = normalizeHttpOrigin(
+      readString(candidate.origin, "permission exception origin", 512),
+      true,
+    );
+    if (!origin) {
+      throw new Error("Invalid permission exception origin.");
     }
 
     if (!candidate.permission || !keys.includes(candidate.permission)) {
@@ -1720,7 +1717,7 @@ function readPermissionExceptions(value: unknown): BrowserSettings["sitePermissi
       throw new Error("Invalid permission exception policy.");
     }
 
-    const dedupeKey = `${host}:${candidate.permission}`;
+    const dedupeKey = `${origin}:${candidate.permission}`;
     if (seen.has(dedupeKey)) {
       continue;
     }
@@ -1731,7 +1728,7 @@ function readPermissionExceptions(value: unknown): BrowserSettings["sitePermissi
         typeof candidate.id === "string" && candidate.id.length <= 80
           ? candidate.id
           : randomUUID(),
-      host,
+      origin,
       permission: candidate.permission,
       policy: candidate.policy,
       updatedAt:

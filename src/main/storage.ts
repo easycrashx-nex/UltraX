@@ -35,6 +35,12 @@ import type {
   UpdateChannel,
 } from "../shared/types";
 import { normalizeShortcutOverrides } from "../shared/shortcuts";
+import { normalizeHttpOrigin } from "../shared/origin-policy";
+import {
+  createSafeRecord,
+  isValidExtensionId,
+  isValidExtensionStorageKey,
+} from "../shared/extension-identifiers";
 import { ensureBuiltInExtensions } from "./extensions";
 
 const STORAGE_VERSION = 8;
@@ -890,7 +896,7 @@ function normalizeUpdateSettings(value: unknown): BrowserSettings["updates"] {
 
   return {
     autoCheck: boolValue(candidate.autoCheck, DEFAULT_SETTINGS.updates.autoCheck),
-    autoDownload: boolValue(candidate.autoDownload, DEFAULT_SETTINGS.updates.autoDownload),
+    autoDownload: false,
     notifyWhenAvailable: boolValue(
       candidate.notifyWhenAvailable,
       DEFAULT_SETTINGS.updates.notifyWhenAvailable,
@@ -912,15 +918,19 @@ function normalizePermissionExceptions(value: unknown): BrowserSettings["sitePer
       continue;
     }
 
-    const candidate = item as Partial<BrowserSettings["sitePermissionExceptions"][number]>;
-    const host = normalizePermissionHost(candidate.host);
+    const candidate = item as Partial<BrowserSettings["sitePermissionExceptions"][number]> & {
+      host?: unknown;
+    };
+    const origin = candidate.origin
+      ? normalizeHttpOrigin(candidate.origin)
+      : normalizeHttpOrigin(candidate.host, true);
     const permission = enumValue(candidate.permission, SITE_PERMISSION_KEYS);
     const policy = enumValue<PermissionPolicy>(candidate.policy, ["ask", "allow", "block"]);
-    if (!host || !permission || !policy) {
+    if (!origin || !permission || !policy) {
       continue;
     }
 
-    const key = `${host}:${permission}`;
+    const key = `${origin}:${permission}`;
     if (seen.has(key)) {
       continue;
     }
@@ -931,7 +941,7 @@ function normalizePermissionExceptions(value: unknown): BrowserSettings["sitePer
         typeof candidate.id === "string" && candidate.id.length <= 80
           ? candidate.id
           : randomUUID(),
-      host,
+      origin,
       permission,
       policy,
       updatedAt:
@@ -944,25 +954,15 @@ function normalizePermissionExceptions(value: unknown): BrowserSettings["sitePer
   return exceptions;
 }
 
-function normalizePermissionHost(value: unknown): string {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const trimmed = value.trim().toLowerCase().replace(/^https?:\/\//, "");
-  const host = trimmed.split(/[/?#]/)[0]?.replace(/^www\./, "") ?? "";
-  return /^[a-z0-9.-]{1,253}$/.test(host) ? host : "";
-}
-
 function normalizeExtensionStorage(value: unknown): Record<string, Record<string, unknown>> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {};
+    return createSafeRecord<Record<string, unknown>>();
   }
 
-  const result: Record<string, Record<string, unknown>> = {};
+  const result = createSafeRecord<Record<string, unknown>>();
   for (const [extensionId, storageValue] of Object.entries(value)) {
     if (
-      !/^[a-z0-9][a-z0-9-_.]{2,79}$/.test(extensionId) ||
+      !isValidExtensionId(extensionId) ||
       !storageValue ||
       typeof storageValue !== "object" ||
       Array.isArray(storageValue)
@@ -970,9 +970,12 @@ function normalizeExtensionStorage(value: unknown): Record<string, Record<string
       continue;
     }
 
-    result[extensionId] = Object.fromEntries(
-      Object.entries(storageValue).filter(([key]) => key.length <= 80).slice(0, 100),
-    );
+    const bucket = createSafeRecord<unknown>();
+    for (const [key, entry] of Object.entries(storageValue)) {
+      if (Object.keys(bucket).length >= 100) break;
+      if (isValidExtensionStorageKey(key)) bucket[key] = entry;
+    }
+    result[extensionId] = bucket;
   }
 
   return result;

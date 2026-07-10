@@ -5,6 +5,7 @@ import type {
   UltraXExtensionManifest,
   UltraXExtensionPermission,
 } from "../shared/types";
+import { isValidExtensionId } from "../shared/extension-identifiers";
 
 const MAX_EXTENSION_ERRORS = 12;
 const EXTENSION_MANIFEST_FILE = "ultrax-extension.json";
@@ -206,8 +207,10 @@ export function validateExtensionManifest(
   const name = readManifestString(candidate.name, "name", 80, errors);
   const version = readManifestString(candidate.version, "version", 40, errors);
 
-  if (id && !/^[a-z0-9][a-z0-9-_.]{2,79}$/.test(id)) {
-    errors.push("Extension id must use lowercase letters, numbers, dashes, underscores, or dots.");
+  if (id && !isValidExtensionId(id)) {
+    errors.push(
+      "Extension id must use lowercase letters, numbers, dashes, underscores, or dots and cannot use reserved object keys.",
+    );
   }
 
   const permissions = normalizePermissions(candidate.permissions, errors);

@@ -23,7 +23,7 @@ Do not expose raw `ipcRenderer`, Node.js, Electron internals, cookies, passwords
 
 ## Update Security
 
-UltraX uses GitHub Releases and `electron-updater` for the prepared update flow.
+UltraX uses the read-only GitHub Releases API for version checks. Unsigned builds do not download or install update binaries automatically.
 
 Production releases should add:
 
@@ -34,3 +34,4 @@ Production releases should add:
 - Required GitHub Actions checks
 
 Unsigned builds can be used for development, but Windows SmartScreen may warn users.
+Users should install unsigned releases manually from the official repository and verify `SHA256SUMS.txt`.

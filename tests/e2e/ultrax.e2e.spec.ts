@@ -30,8 +30,11 @@ type TestPageServer = {
 async function launchUltraX(userDataDir?: string): Promise<UltraXTestApp> {
   const resolvedUserDataDir =
     userDataDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), "ultrax-e2e-")));
+  const executablePath = process.env.ULTRAX_E2E_EXECUTABLE;
   const app = await electron.launch({
-    args: ["."],
+    ...(executablePath
+      ? { executablePath: path.resolve(executablePath), args: [] }
+      : { args: ["."] }),
     env: {
       ...process.env,
       ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
@@ -319,7 +322,7 @@ test("settings persist across an app restart", async () => {
       sitePermissionExceptions: [
         {
           id: "example-notifications",
-          host: "example.com",
+          origin: "https://www.example.com:8443",
           permission: "notifications",
           policy: "block",
           updatedAt: Date.now(),
@@ -345,14 +348,14 @@ test("settings persist across an app restart", async () => {
     expect(state.settings.focusRingVisibility).toBe("high");
     expect(state.settings.textScale).toBe("extra-large");
     expect(state.settings.permissionPolicy.notifications).toBe("ask");
-    expect(state.settings.sitePermissionExceptions[0].host).toBe("example.com");
+    expect(state.settings.sitePermissionExceptions[0].origin).toBe("https://www.example.com:8443");
     expect(state.settings.shortcutOverrides.newTab).toEqual(["Ctrl+Shift+N"]);
   } finally {
     await closeUltraX(secondRun);
   }
 });
 
-test("fresh settings use v1.1.8 search, suggestions, home, and permission defaults", async () => {
+test("fresh settings use v1.1.9 search, suggestions, home, and permission defaults", async () => {
   const app = await launchUltraX();
 
   try {
@@ -729,10 +732,81 @@ test("updates page opens and renders current version controls", async () => {
     await app.page.getByTestId("settings-category-updates").click();
 
     await expect(app.page.getByText("Current version")).toBeVisible();
-    await expect(app.page.getByText(/UltraX Browser 1\.1\.8/)).toBeVisible();
+    await expect(app.page.getByText(/UltraX Browser 1\.1\.[89]/)).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Check for Updates" })).toBeVisible();
-    await expect(app.page.getByRole("button", { name: "Download Update" })).toBeVisible();
-    await expect(app.page.getByRole("button", { name: "Install and Restart" })).toBeVisible();
+    await expect(app.page.getByText(/Manual until UltraX Windows releases/i)).toBeVisible();
+    await expect(app.page.getByRole("button", { name: "Open Official Release" })).toBeVisible();
+    await expect(app.page.getByRole("button", { name: "Download Update" })).toHaveCount(0);
+    await expect(app.page.getByRole("button", { name: "Install and Restart" })).toHaveCount(0);
+  } finally {
+    await closeUltraX(app);
+  }
+});
+
+test("packaged security boundaries sandbox generic extension panels", async () => {
+  test.skip(!process.env.ULTRAX_E2E_EXECUTABLE, "Requires the packaged UltraX executable.");
+  const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "ultrax-e2e-packaged-"));
+  const extensionDir = path.join(userDataDir, "hostile-extension");
+  await fs.mkdir(extensionDir, { recursive: true });
+  await fs.writeFile(
+    path.join(extensionDir, "ultrax-extension.json"),
+    JSON.stringify({
+      id: "sandbox-test-extension",
+      name: "Sandbox Test Extension",
+      version: "1.0.0",
+      panel: "panel.html",
+      permissions: ["sidebar"],
+    }),
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(extensionDir, "panel.html"),
+    '<!doctype html><script>top.location.href="https://attacker.invalid/escaped";</script><p>Sandbox test</p>',
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(userDataDir, "ultrax-state.json"),
+    JSON.stringify({
+      version: 8,
+      state: {
+        installedExtensions: [
+          {
+            id: "sandbox-test-extension",
+            manifest: {
+              id: "sandbox-test-extension",
+              name: "Sandbox Test Extension",
+              version: "1.0.0",
+              panel: "panel.html",
+              permissions: ["sidebar"],
+            },
+            source: "local",
+            installPath: extensionDir,
+            enabled: true,
+            developerMode: true,
+            installedAt: Date.now(),
+            updatedAt: Date.now(),
+            status: "enabled",
+            errors: [],
+            validationWarnings: [],
+            runtimeLogs: [],
+          },
+        ],
+      },
+    }),
+    "utf8",
+  );
+
+  const app = await launchUltraX(userDataDir);
+  try {
+    const shellUrl = app.page.url();
+    await app.page.locator('[data-quick-settings-trigger="true"]').click();
+    await app.page.getByTitle("Open Sandbox Test Extension").click();
+    const frame = app.page.getByTitle("Sandbox Test Extension panel");
+    await expect(frame).toBeVisible();
+    await expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+    await expect(frame).toHaveAttribute("referrerpolicy", "no-referrer");
+    await app.page.waitForTimeout(500);
+    expect(app.page.url()).toBe(shellUrl);
   } finally {
     await closeUltraX(app);
   }

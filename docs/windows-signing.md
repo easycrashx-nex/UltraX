@@ -50,9 +50,9 @@ The app currently includes clean Windows metadata:
 - requested execution level: `asInvoker`
 - no forced elevation
 - SHA256 release checksums
-- GitHub Releases update provider over HTTPS
+- read-only GitHub Releases checks over HTTPS
 
-Until a real signing certificate is configured, builds should be treated as unsigned. `verifyUpdateCodeSignature` is disabled so unsigned updater testing remains possible. When production signing is in place and verified, revisit this setting.
+Until a real signing certificate is configured, builds are treated as unsigned and automatic binary installation remains disabled. When production signing is in place and verified, reintroduce update downloads only together with enforced publisher verification and packaged update tests.
 
 ## Verify A Signed Build
 

@@ -8,9 +8,8 @@ const version = packageJson.version;
 
 function isCurrentReleaseArtifact(name) {
   return (
-    name === "latest.yml" ||
     (name.startsWith(`UltraX-Browser-Setup-${version}-`) &&
-      (name.endsWith(".exe") || name.endsWith(".exe.blockmap"))) ||
+      name.endsWith(".exe")) ||
     (name.startsWith(`UltraX-Browser-${version}-Portable-`) && name.endsWith(".exe"))
   );
 }
@@ -31,16 +30,27 @@ function removeOldChecksumFiles(directory) {
   }
 }
 
+function removeUnsignedUpdaterMetadata(directory) {
+  for (const name of readdirSync(directory)) {
+    const currentBlockmap =
+      name.startsWith(`UltraX-Browser-Setup-${version}-`) && name.endsWith(".exe.blockmap");
+    if (name === "latest.yml" || currentBlockmap) {
+      unlinkSync(path.join(directory, name));
+    }
+  }
+}
+
 function sha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
+removeUnsignedUpdaterMetadata(releaseDir);
 removeOldChecksumFiles(releaseDir);
 
 const targets = collectTargets(releaseDir);
 
-if (targets.length < 4) {
-  throw new Error(`Expected current ${version} installer, portable, blockmap, and latest.yml before checksums.`);
+if (targets.length < 2) {
+  throw new Error(`Expected current ${version} installer and portable executable before checksums.`);
 }
 
 const lines = targets.map((target) => {

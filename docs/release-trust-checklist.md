@@ -37,12 +37,10 @@ Use this checklist before publishing a public UltraX Browser Windows release.
 
 - Upload the Setup EXE.
 - Upload the Portable EXE.
-- Upload `latest.yml`.
-- Upload the blockmap.
 - Upload `SHA256SUMS.txt`.
 - Upload individual `.sha256` files.
-- Confirm `latest.yml` points to the Setup EXE.
-- Confirm `SHA256SUMS.txt` contains Setup, Portable, blockmap, and `latest.yml` entries.
+- Confirm `SHA256SUMS.txt` contains Setup and Portable entries.
+- Do not publish auto-updater metadata while releases are unsigned.
 
 ## False Positive Handling
 

@@ -69,7 +69,7 @@ export type PermissionPolicy = "block" | "ask" | "allow";
 
 export type PermissionException = {
   id: string;
-  host: string;
+  origin: string;
   permission: SitePermissionKey;
   policy: PermissionPolicy;
   updatedAt: number;
@@ -121,6 +121,7 @@ export type UpdateStatusSnapshot = {
   releaseName?: string;
   releaseDate?: string;
   releaseNotes?: string;
+  releaseUrl?: string;
   lastCheckedAt?: number;
   progress?: UpdateDownloadProgress;
   error?: string;

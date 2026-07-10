@@ -29,35 +29,34 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Electron E2E tests
+        run: npm run test:e2e
+
       - name: Build Windows release package
         run: npm run release:win
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
-      - name: Verify updater metadata
+      - name: Verify manual release assets
         shell: pwsh
         run: |
-          $appUpdate = "release/win-unpacked/resources/app-update.yml"
-          if (!(Test-Path $appUpdate)) {
-            throw "Missing app-update.yml in packaged app resources."
-          }
-
-          $appUpdateText = Get-Content $appUpdate -Raw
-          foreach ($expected in @("provider: github", "owner: easycrashx-nex", "repo: UltraX")) {
-            if (!$appUpdateText.Contains($expected)) {
-              throw "app-update.yml does not contain '$expected'."
+          $version = node -p "require('./package.json').version"
+          foreach ($path in @(
+            "release/UltraX-Browser-Setup-$version-x64.exe",
+            "release/UltraX-Browser-$version-Portable-x64.exe",
+            "release/SHA256SUMS.txt"
+          )) {
+            if (!(Test-Path $path)) {
+              throw "Missing required manual release asset: $path"
             }
           }
 
-          if (!(Test-Path "release/latest.yml")) {
-            throw "Missing latest.yml updater metadata."
-          }
-
-          $latestText = Get-Content "release/latest.yml" -Raw
-          if ($latestText -notmatch "UltraX-Browser-Setup-.+-x64\.exe") {
-            throw "latest.yml does not point to the Windows Setup installer."
-          }
+      - name: Packaged security smoke test
+        run: npm run test:e2e:packaged
 
       - name: Create or update GitHub release
         shell: pwsh
@@ -79,22 +78,17 @@ jobs:
         run: |
           $version = node -p "require('./package.json').version"
           $setup = "UltraX-Browser-Setup-$version-x64.exe"
-          $setupBlockmap = "$setup.blockmap"
           $portable = "UltraX-Browser-$version-Portable-x64.exe"
 
           $assets = @()
           $assets += Get-Item "release/$setup" -ErrorAction Stop
-          $assets += Get-Item "release/$setupBlockmap" -ErrorAction Stop
           $assets += Get-Item "release/$portable" -ErrorAction Stop
-          $assets += Get-Item "release/latest.yml" -ErrorAction Stop
           $assets += Get-Item "release/$setup.sha256" -ErrorAction Stop
-          $assets += Get-Item "release/$setupBlockmap.sha256" -ErrorAction Stop
           $assets += Get-Item "release/$portable.sha256" -ErrorAction Stop
-          $assets += Get-Item "release/latest.yml.sha256" -ErrorAction Stop
           $assets += Get-Item "release/SHA256SUMS.txt" -ErrorAction Stop
 
-          if ($assets.Count -lt 9) {
-            throw "Expected installer, portable, blockmap, latest.yml, and checksum release assets."
+          if ($assets.Count -ne 5) {
+            throw "Expected installer, portable executable, and checksum release assets."
           }
 
           foreach ($asset in $assets) {
@@ -109,8 +103,6 @@ jobs:
           name: ultrax-windows-release
           path: |
             release/*.exe
-            release/*.blockmap
-            release/*.yml
             release/*.sha256
             release/SHA256SUMS.txt
           if-no-files-found: warn

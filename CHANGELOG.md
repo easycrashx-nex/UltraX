@@ -1,5 +1,23 @@
 # UltraX Browser Changelog
 
+## 1.1.9 - Security and Release Hardening
+
+### Security
+
+- Bound password filling to the originally authorized origin and concrete main-frame instance so navigation races cannot inject credentials into a later origin.
+- Changed remembered site permissions from hostname-only keys to complete HTTP(S) origins, preserving scheme, port, and `www` boundaries.
+- Rejected prototype-sensitive extension IDs and storage keys and moved extension storage to own-property, prototype-less buckets.
+- Sanitized every suggested download filename before resolving a save path, including Windows device names, ADS separators, path traversal, control characters, and trailing dots or spaces.
+- Sandboxed generic extension panels without same-origin or top-navigation authority and restricted message handling to the embedded frame.
+- Removed automatic update binary download and installation until UltraX releases use trusted Windows code signing. Version checks now use the read-only GitHub Releases API and route users to the official release page.
+
+### Tests and Release
+
+- Added focused regression coverage for all four validated security findings and safe control cases.
+- Added a packaged Electron security smoke test for extension-panel sandboxing.
+- Made unit tests part of the Build workflow and Electron E2E tests part of push, pull-request, and release validation.
+- Changed unsigned releases to publish Setup, Portable, and SHA256 assets without auto-updater metadata.
+
 ## 1.1.8 - Scrollable Tabs and Secure Local Password Manager
 
 ### Added
