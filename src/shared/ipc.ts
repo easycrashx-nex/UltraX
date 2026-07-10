@@ -100,6 +100,10 @@ export const IPC = {
   passwordManagerImportBackup: "password-manager:import-backup",
   passwordManagerChangeMaster: "password-manager:change-master",
   passwordManagerDeleteVault: "password-manager:delete-vault",
+  passwordManagerPageMessage: "password-manager:page-message",
+  passwordManagerPromptAction: "password-manager:prompt-action",
+  passwordManagerPromptChanged: "password-manager:prompt-changed",
+  passwordManagerAutofillChanged: "password-manager:autofill-changed",
 
   minimizeWindow: "window:minimize",
   toggleMaximizeWindow: "window:toggle-maximize",

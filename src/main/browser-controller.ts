@@ -88,6 +88,7 @@ type BrowserControllerOptions = {
   windowId?: string;
   initialSession?: BrowserWindowSession;
   onCreateWindowFromTab?: (tab: BrowserTab, sourceWindowId: string) => void;
+  onPasswordNavigation?: (tabId: string, origin: string) => void;
 };
 
 export class BrowserController {
@@ -1288,6 +1289,7 @@ export class BrowserController {
   private createWebView(tabId: string): WebContentsView {
     const view = new WebContentsView({
       webPreferences: {
+        preload: path.join(__dirname, "../preload/password-page.js"),
         partition: WEB_PARTITION,
         nodeIntegration: false,
         contextIsolation: true,
@@ -1425,6 +1427,7 @@ export class BrowserController {
     const title = contents.getTitle() || getHostnameLabel(url);
     this.patchTabFromContents(tabId, contents, { url, title, isNewTab: false });
     this.recordHistory(url, title);
+    this.options.onPasswordNavigation?.(tabId, new URL(url).origin);
   }
 
   private recordHistory(url: string, title: string): void {
@@ -1569,6 +1572,13 @@ export class BrowserController {
         console.warn("Unable to detach browser view.", error instanceof Error ? error.message : error);
       }
     }
+  }
+
+  getTabIdForWebContents(contents: WebContents): string | undefined {
+    for (const [tabId, view] of this.views) {
+      if (view.webContents === contents) return tabId;
+    }
+    return undefined;
   }
 
   private layoutActiveView(): void {

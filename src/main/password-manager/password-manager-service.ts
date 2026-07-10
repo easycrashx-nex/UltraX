@@ -158,6 +158,74 @@ export class PasswordManagerService {
       .map(toDisplayItem);
   }
 
+  async listMatchingCredentials(origin: string): Promise<PasswordVaultItemDisplay[]> {
+    const normalizedOrigin = normalizeCredentialOrigin(origin);
+    if (!isSecureCredentialOrigin(normalizedOrigin)) return [];
+    const document = await this.readUnlockedDocument();
+    this.touch();
+    return document.items
+      .filter((item) => item.origins.some((saved) => originsMatch(saved, normalizedOrigin)))
+      .sort((left, right) => Number(right.favorite) - Number(left.favorite) || (right.lastUsedAt ?? 0) - (left.lastUsedAt ?? 0))
+      .map(toDisplayItem);
+  }
+
+  async classifyCredentialCandidate(origin: string, username: string, password: string): Promise<"save" | "update" | "duplicate"> {
+    const normalizedOrigin = normalizeCredentialOrigin(origin);
+    if (!isSecureCredentialOrigin(normalizedOrigin)) return "save";
+    const document = await this.readUnlockedDocument();
+    const usernameKey = boundedString(username, "login username", 512, 1).trim().toLocaleLowerCase();
+    const candidatePassword = boundedString(password, "login password", 4096, 1);
+    const existing = document.items.find(
+      (item) => item.username.trim().toLocaleLowerCase() === usernameKey &&
+        item.origins.some((saved) => originsMatch(saved, normalizedOrigin)),
+    );
+    if (!existing) return "save";
+    return existing.password === candidatePassword ? "duplicate" : "update";
+  }
+
+  async saveCredentialCandidate(origin: string, username: string, password: string): Promise<"saved" | "updated" | "duplicate"> {
+    const normalizedOrigin = normalizeCredentialOrigin(origin);
+    if (!isSecureCredentialOrigin(normalizedOrigin)) throw new Error("Password saving is blocked on insecure HTTP pages.");
+    const normalizedUsername = boundedString(username, "login username", 512, 1).trim();
+    const candidatePassword = boundedString(password, "login password", 4096, 1);
+    const usernameKey = normalizedUsername.toLocaleLowerCase();
+    return await this.mutate(async (document) => {
+      const existing = document.items.find(
+        (item) => item.username.trim().toLocaleLowerCase() === usernameKey &&
+          item.origins.some((saved) => originsMatch(saved, normalizedOrigin)),
+      );
+      const now = Date.now();
+      if (existing) {
+        if (existing.password === candidatePassword) {
+          existing.lastUsedAt = now;
+          existing.updatedAt = Math.max(existing.updatedAt, now);
+          return "duplicate";
+        }
+        existing.password = candidatePassword;
+        existing.passwordChangedAt = now;
+        existing.lastUsedAt = now;
+        existing.updatedAt = now;
+        return "updated";
+      }
+
+      document.items.push({
+        id: randomUUID(),
+        type: "login",
+        title: new URL(normalizedOrigin).hostname,
+        origins: [normalizedOrigin],
+        username: normalizedUsername,
+        password: candidatePassword,
+        favorite: false,
+        tags: [],
+        createdAt: now,
+        updatedAt: now,
+        lastUsedAt: now,
+        passwordChangedAt: now,
+      });
+      return "saved";
+    });
+  }
+
   async create(input: PasswordVaultItemInput): Promise<PasswordVaultItemDisplay> {
     const sanitized = sanitizeItemInput(input, true);
     return await this.mutate(async (document) => {

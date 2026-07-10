@@ -4,9 +4,9 @@ import path from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 
 const expectedVersion = packageJson.version;
-const expectedTag = "v1.1.10";
+const expectedTag = "v1.2.0";
 const tag = process.argv.find((value) => value.startsWith("--tag="))?.slice(6) ?? process.env.GITHUB_REF_NAME;
-if (expectedVersion !== "1.1.10") throw new Error(`Release validation requires package version 1.1.10, got ${expectedVersion}.`);
+if (expectedVersion !== "1.2.0") throw new Error(`Release validation requires package version 1.2.0, got ${expectedVersion}.`);
 if (tag && tag !== expectedTag) throw new Error(`Release validation requires tag ${expectedTag}, got ${tag}.`);
 
 const releaseDir = path.resolve(process.env.ULTRAX_RELEASE_DIR ?? "release");
@@ -30,7 +30,7 @@ if (latestUrl !== setup) throw new Error("latest.yml installer name does not mat
 const expectedSha512 = createHash("sha512").update(readFileSync(path.join(releaseDir, setup))).digest("base64");
 const metadataSha512 = latest.match(/^\s*sha512:\s*(\S+)\s*$/m)?.[1];
 if (metadataSha512 !== expectedSha512) throw new Error("latest.yml SHA-512 does not match the installer.");
-if (/1\.1\.8|1\.1\.9|1\.2\.0|v1\.1\.8|v1\.1\.9|v1\.2\.0/.test(latest)) throw new Error("latest.yml contains a wrong version reference.");
+if (/1\.1\.8|1\.1\.9|1\.1\.10|v1\.1\.8|v1\.1\.9|v1\.1\.10/.test(latest)) throw new Error("latest.yml contains a wrong version reference.");
 
 const appUpdatePath = path.join(releaseDir, "win-unpacked", "resources", "app-update.yml");
 if (existsSync(appUpdatePath)) {

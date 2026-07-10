@@ -582,7 +582,7 @@ export function SettingsPage({
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold">UltraX Settings</h1>
             <p className="truncate text-xs text-muted-foreground">
-              UltraX Browser 1.1.10-DevU silent in-app update and restart flow.
+              UltraX Browser 1.2.0 automatic password save and secure autofill.
             </p>
           </div>
         </div>
@@ -3258,8 +3258,8 @@ function CategoryContent({
             <InfoRow label="License" detail="Project-local MVP placeholder." />
           </SettingSection>
           <StatusCard
-            title="UltraX Browser 1.1.10-DevU"
-            detail="Silent in-app updates with automatic restart and preserved session state."
+            title="UltraX Browser 1.2.0"
+            detail="Automatic password saving, trusted autofill, and exact-origin protection."
             icon={<Sparkles aria-hidden="true" />}
           />
         </>

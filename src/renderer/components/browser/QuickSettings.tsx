@@ -265,7 +265,7 @@ function getAboutDetail(
     return "Restart to update";
   }
 
-  return runtimeInfo ? `UltraX Browser ${runtimeInfo.appVersion}` : "UltraX Browser 1.1.10-DevU";
+  return runtimeInfo ? `UltraX Browser ${runtimeInfo.appVersion}` : "UltraX Browser 1.2.0";
 }
 
 function hasUpdateAttention(updateStatus: UpdateStatusSnapshot | null): boolean {

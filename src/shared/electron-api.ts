@@ -27,6 +27,9 @@ import type {
   PasswordHealthSummary,
   PasswordImportSummary,
   PasswordManagerStatus,
+  PasswordAutofillSnapshot,
+  PasswordPromptAction,
+  PasswordPromptSnapshot,
   PasswordVaultItemDisplay,
   PasswordVaultItemInput,
   PasswordVaultItemUpdate,
@@ -149,6 +152,7 @@ export type UltraXApi = {
     importBackup: (backupPassword: string) => Promise<PasswordImportSummary | null>;
     changeMasterPassword: (currentPassword: string, newPassword: string) => Promise<void>;
     deleteVault: (masterPassword: string) => Promise<void>;
+    promptAction: (promptId: string, action: PasswordPromptAction) => Promise<"completed" | "vault-locked">;
     onStatusChanged: (callback: (status: PasswordManagerStatus) => void) => Unsubscribe;
   };
 
@@ -163,4 +167,6 @@ export type UltraXApi = {
   onFindInPageResult: (callback: (result: FindInPageResult) => void) => Unsubscribe;
   onCloseRequested: (callback: () => void) => Unsubscribe;
   onUpdateStatusChanged: (callback: (status: UpdateStatusSnapshot) => void) => Unsubscribe;
+  onPasswordPromptChanged: (callback: (prompt: PasswordPromptSnapshot | null) => void) => Unsubscribe;
+  onPasswordAutofillChanged: (callback: (snapshot: PasswordAutofillSnapshot | null) => void) => Unsubscribe;
 };

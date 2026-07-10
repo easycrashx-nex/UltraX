@@ -11,8 +11,14 @@ export type PasswordGeneratorSettings = {
 };
 
 export type PasswordManagerSettings = {
+  offerToSavePasswords: boolean;
+  offerToUpdatePasswords: boolean;
   offerAutofill: boolean;
   autofillUsername: boolean;
+  requireUserGestureForPassword: boolean;
+  requireVaultUnlock: boolean;
+  allowInsecureHttpAutofill: boolean;
+  neverSaveOrigins: string[];
   autoLockMinutes: PasswordManagerAutoLockMinutes;
   lockOnAppClose: boolean;
   lockOnAllWindowsClosed: boolean;
@@ -93,3 +99,47 @@ export type PasswordFillResult = {
   filledPassword: boolean;
   origin: string;
 };
+
+export type PasswordPageMessage =
+  | {
+      kind: "candidate-submitted";
+      origin: string;
+      actionOrigin: string;
+      username: string;
+      password: string;
+    }
+  | {
+      kind: "field-focused";
+      origin: string;
+      field: "username" | "password";
+    }
+  | {
+      kind: "login-transition";
+      origin: string;
+      likelySuccess: boolean;
+    };
+
+export type PasswordPromptSnapshot = {
+  promptId: string;
+  action: "save" | "update";
+  origin: string;
+  username: string;
+  passwordLength: number;
+  vaultLocked: boolean;
+};
+
+export type PasswordAutofillSuggestion = {
+  itemId: string;
+  title: string;
+  username: string;
+  origin: string;
+};
+
+export type PasswordAutofillSnapshot = {
+  tabId: string;
+  origin: string;
+  vaultLocked: boolean;
+  suggestions: PasswordAutofillSuggestion[];
+};
+
+export type PasswordPromptAction = "save" | "update" | "dismiss" | "never-save";

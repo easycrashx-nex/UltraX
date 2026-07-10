@@ -1,5 +1,14 @@
 # UltraX Browser Changelog
 
+## 1.2.0 - Password Save & Autofill Integration
+
+- Added isolated top-level login form detection with transient Main-process candidate handling.
+- Added trusted UltraX Save Password and Update Password prompts.
+- Added exact-origin autofill account suggestions with explicit user selection.
+- Added Never Save origin rules and Passwords & Autofill controls.
+- Blocked HTTP, hidden-frame, cross-origin-frame, lookalike-domain, and inactive-tab autofill paths.
+- Kept password values out of renderer state, extension APIs, logs, and persistent browser state.
+
 ## 1.1.10-DevU - Silent In-App Updates
 
 - Added explicit update download and install actions.

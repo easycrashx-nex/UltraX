@@ -191,8 +191,14 @@ export const DEFAULT_SETTINGS: BrowserSettings = {
   tabHoverPreview: true,
   shortcutOverrides: {},
   passwordManager: {
+    offerToSavePasswords: true,
+    offerToUpdatePasswords: true,
     offerAutofill: true,
     autofillUsername: true,
+    requireUserGestureForPassword: true,
+    requireVaultUnlock: true,
+    allowInsecureHttpAutofill: false,
+    neverSaveOrigins: [],
     autoLockMinutes: 15,
     lockOnAppClose: true,
     lockOnAllWindowsClosed: true,
@@ -738,8 +744,16 @@ function normalizePasswordManagerSettings(
     ? Math.max(8, Math.min(128, Math.trunc(Number(value?.generator.length))))
     : defaults.generator.length;
   return {
+    offerToSavePasswords: boolValue(value?.offerToSavePasswords, defaults.offerToSavePasswords),
+    offerToUpdatePasswords: boolValue(value?.offerToUpdatePasswords, defaults.offerToUpdatePasswords),
     offerAutofill: boolValue(value?.offerAutofill, defaults.offerAutofill),
     autofillUsername: boolValue(value?.autofillUsername, defaults.autofillUsername),
+    requireUserGestureForPassword: boolValue(value?.requireUserGestureForPassword, defaults.requireUserGestureForPassword),
+    requireVaultUnlock: boolValue(value?.requireVaultUnlock, defaults.requireVaultUnlock),
+    allowInsecureHttpAutofill: boolValue(value?.allowInsecureHttpAutofill, defaults.allowInsecureHttpAutofill),
+    neverSaveOrigins: Array.isArray(value?.neverSaveOrigins)
+      ? [...new Set(value.neverSaveOrigins.filter((origin): origin is string => typeof origin === "string").map((origin) => normalizeHttpOrigin(origin)).filter(Boolean))].slice(0, 200)
+      : [...defaults.neverSaveOrigins],
     autoLockMinutes,
     lockOnAppClose: boolValue(value?.lockOnAppClose, defaults.lockOnAppClose),
     lockOnAllWindowsClosed: boolValue(value?.lockOnAllWindowsClosed, defaults.lockOnAllWindowsClosed),

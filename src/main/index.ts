@@ -16,6 +16,7 @@ import { IPC } from "../shared/ipc";
 import { formatVisibleVersion } from "../shared/version";
 import { normalizeHttpOrigin } from "../shared/origin-policy";
 import { normalizeShortcutOverrides } from "../shared/shortcuts";
+import { areCredentialOriginsAffiliated } from "../shared/password-affiliations";
 import type {
   BrowserSettings,
   BrowserWindowBounds,
@@ -34,6 +35,10 @@ import type {
   PasswordFillRequest,
   PasswordGeneratorSettings,
   PasswordManagerSettings,
+  PasswordAutofillSnapshot,
+  PasswordPageMessage,
+  PasswordPromptAction,
+  PasswordPromptSnapshot,
   PasswordVaultItemInput,
   PasswordVaultItemUpdate,
 } from "../shared/password-manager";
@@ -58,6 +63,17 @@ type CreateWindowOptions = {
 };
 
 const windowRecords = new Map<number, WindowRecord>();
+type PendingPasswordCandidate = {
+  promptId: string;
+  recordId: string;
+  tabId: string;
+  origin: string;
+  actionOrigin: string;
+  username: string;
+  password: string;
+  timer: NodeJS.Timeout;
+};
+const pendingPasswordCandidates = new Map<string, PendingPasswordCandidate>();
 let storage = undefined as unknown as StorageService;
 let passwordManager = undefined as unknown as PasswordManagerService;
 let ipcHandlersRegistered = false;
@@ -76,6 +92,7 @@ passwordManager = new PasswordManagerService({
   directory: path.join(app.getPath("userData"), "password-manager"),
   getSettings: () => getCurrentPasswordManagerSettings(),
   onStatusChanged: (status) => {
+    if (status.state === "locked" || status.state === "corrupted") clearAllPendingPasswordCandidates();
     for (const record of windowRecords.values()) {
       if (!record.window.isDestroyed()) record.window.webContents.send(IPC.passwordManagerStatusChanged, status);
     }
@@ -121,6 +138,7 @@ function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
       });
       newWindow.focus();
     },
+    onPasswordNavigation: (tabId, origin) => handlePasswordNavigation(windowId, tabId, origin),
   });
   const updateManager = new UpdateManager(
     window,
@@ -189,6 +207,7 @@ function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
   }
 
   window.on("closed", () => {
+    clearPendingPasswordCandidates(record.id);
     const lockWhenAllWindowsClose = record.controller.getState().settings.passwordManager.lockOnAllWindowsClosed;
     record.controller.dispose();
     record.updateManager.dispose();
@@ -413,11 +432,24 @@ function registerIpcHandlers(): void {
     });
   };
 
+  ipcMain.removeAllListeners(IPC.passwordManagerPageMessage);
+  ipcMain.on(IPC.passwordManagerPageMessage, (event, value: unknown) => {
+    const record = [...windowRecords.values()].find((candidate) => candidate.controller.getTabIdForWebContents(event.sender) !== undefined);
+    if (!record || !event.senderFrame || event.senderFrame !== event.sender.mainFrame) return;
+    const tabId = record.controller.getTabIdForWebContents(event.sender);
+    if (!tabId) return;
+    void handlePasswordPageMessage(record, tabId, value);
+  });
+
   handle(IPC.getState, (record) => record.controller.getState());
   handle(IPC.setViewInsets, (record, _event, insets) => record.controller.setViewInsets(readInsets(insets)));
   handle(IPC.createTab, (record) => record.controller.createTab(undefined, true));
   handle(IPC.closeTab, (record, _event, tabId) =>
-    record.controller.closeTab(readString(tabId, "tabId", 128)),
+    (() => {
+      const id = readString(tabId, "tabId", 128);
+      clearPendingPasswordCandidates(record.id, id);
+      record.controller.closeTab(id);
+    })(),
   );
   handle(IPC.duplicateTab, (record, _event, tabId) =>
     record.controller.duplicateTab(readString(tabId, "tabId", 128)),
@@ -599,7 +631,10 @@ function registerIpcHandlers(): void {
     passwordManager.unlock(readString(masterPassword, "master password", 1024)),
   );
   handle(IPC.passwordManagerUnlockWithOs, () => passwordManager.unlockWithOs());
-  handle(IPC.passwordManagerLock, () => passwordManager.lock());
+  handle(IPC.passwordManagerLock, () => {
+    clearAllPendingPasswordCandidates();
+    return passwordManager.lock();
+  });
   handle(IPC.passwordManagerList, (_record, _event, query) =>
     passwordManager.list(readString(query, "password search", 256)),
   );
@@ -656,6 +691,13 @@ function registerIpcHandlers(): void {
   handle(IPC.passwordManagerDeleteVault, (_record, _event, masterPassword) =>
     passwordManager.deleteVault(readString(masterPassword, "master password", 1024)),
   );
+  handle(IPC.passwordManagerPromptAction, async (record, _event, promptId, action) =>
+    handlePasswordPromptAction(
+      record,
+      readString(promptId, "password prompt id", 128),
+      readPasswordPromptAction(action),
+    ),
+  );
   handle(IPC.minimizeWindow, (record) => record.window.minimize());
   handle(IPC.toggleMaximizeWindow, (record) => {
     if (record.window.isMaximized()) {
@@ -679,6 +721,225 @@ function getRecordForEvent(event: IpcMainInvokeEvent): WindowRecord {
   }
 
   return record;
+}
+
+async function handlePasswordPageMessage(record: WindowRecord, tabId: string, value: unknown): Promise<void> {
+  const message = readPasswordPageMessage(value);
+  if (!message) return;
+
+  if (message.kind === "field-focused") {
+    await publishAutofillSuggestions(record, tabId, message.origin);
+    return;
+  }
+
+  if (message.kind === "candidate-submitted") {
+    const origin = normalizeHttpOrigin(message.origin);
+    const actionOrigin = normalizeHttpOrigin(message.actionOrigin);
+    const settings = record.controller.getState().settings.passwordManager;
+    if (!origin || origin !== actionOrigin || !origin.startsWith("https://") ||
+      settings.neverSaveOrigins.includes(origin) || !settings.offerToSavePasswords) {
+      return;
+    }
+    clearPendingPasswordCandidates(record.id, tabId);
+    const promptId = randomUUID();
+    const timer = setTimeout(() => clearPendingPasswordCandidate(promptId), 60_000);
+    timer.unref();
+    pendingPasswordCandidates.set(promptId, {
+      promptId,
+      recordId: record.id,
+      tabId,
+      origin,
+      actionOrigin,
+      username: message.username,
+      password: message.password,
+      timer,
+    });
+    return;
+  }
+
+  if (message.likelySuccess) {
+    const candidate = [...pendingPasswordCandidates.values()].find(
+      (item) => item.recordId === record.id && item.tabId === tabId && item.origin === normalizeHttpOrigin(message.origin),
+    );
+    if (candidate) await finalizePasswordCandidate(record, candidate);
+  } else {
+    clearPendingPasswordCandidates(record.id, tabId);
+  }
+}
+
+async function publishAutofillSuggestions(record: WindowRecord, tabId: string, rawOrigin: string): Promise<void> {
+  const origin = normalizeHttpOrigin(rawOrigin);
+  const settings = record.controller.getState().settings.passwordManager;
+  if (!origin || !origin.startsWith("https://") || !settings.offerAutofill) {
+    sendAutofillSnapshot(record, null);
+    return;
+  }
+  try {
+    if (record.controller.getActiveTabOrigin(tabId) !== origin) {
+      sendAutofillSnapshot(record, null);
+      return;
+    }
+  } catch {
+    sendAutofillSnapshot(record, null);
+    return;
+  }
+  const status = await passwordManager.getStatus();
+  try {
+    if (record.controller.getActiveTabOrigin(tabId) !== origin) {
+      sendAutofillSnapshot(record, null);
+      return;
+    }
+  } catch {
+    sendAutofillSnapshot(record, null);
+    return;
+  }
+  const snapshot: PasswordAutofillSnapshot = {
+    tabId,
+    origin,
+    vaultLocked: status.state !== "unlocked",
+    suggestions: status.state === "unlocked"
+      ? (await passwordManager.listMatchingCredentials(origin)).slice(0, 8).map((item) => ({
+          itemId: item.id,
+          title: item.title,
+          username: item.username,
+          origin,
+        }))
+      : [],
+  };
+  sendAutofillSnapshot(record, snapshot);
+}
+
+async function finalizePasswordCandidate(record: WindowRecord, candidate: PendingPasswordCandidate): Promise<void> {
+  const settings = record.controller.getState().settings.passwordManager;
+  const status = await passwordManager.getStatus();
+  let action: PasswordPromptSnapshot["action"] = "save";
+  if (status.state === "unlocked") {
+    const classification = await passwordManager.classifyCredentialCandidate(candidate.origin, candidate.username, candidate.password);
+    if (classification === "duplicate") {
+      clearPendingPasswordCandidate(candidate.promptId);
+      return;
+    }
+    action = classification;
+  }
+  if (action === "save" && !settings.offerToSavePasswords) {
+    clearPendingPasswordCandidate(candidate.promptId);
+    return;
+  }
+  if (action === "update" && !settings.offerToUpdatePasswords) {
+    clearPendingPasswordCandidate(candidate.promptId);
+    return;
+  }
+  const prompt: PasswordPromptSnapshot = {
+    promptId: candidate.promptId,
+    action,
+    origin: candidate.origin,
+    username: candidate.username,
+    passwordLength: candidate.password.length,
+    vaultLocked: status.state !== "unlocked",
+  };
+  if (!record.window.isDestroyed() && !record.window.webContents.isDestroyed()) {
+    record.window.webContents.send(IPC.passwordManagerPromptChanged, prompt);
+  }
+}
+
+async function handlePasswordPromptAction(
+  record: WindowRecord,
+  promptId: string,
+  action: PasswordPromptAction,
+): Promise<"completed" | "vault-locked"> {
+  const candidate = pendingPasswordCandidates.get(promptId);
+  if (!candidate || candidate.recordId !== record.id) throw new Error("This password prompt has expired.");
+  if (action === "dismiss") {
+    clearPendingPasswordCandidate(promptId);
+    sendPrompt(record, null);
+    return "completed";
+  }
+  if (action === "never-save") {
+    const settings = record.controller.getState().settings.passwordManager;
+    record.controller.updateSettings({
+      passwordManager: {
+        ...settings,
+        neverSaveOrigins: [...new Set([...settings.neverSaveOrigins, candidate.origin])].slice(0, 200),
+      },
+    });
+    syncSettingsToOtherWindows(record);
+    clearPendingPasswordCandidate(promptId);
+    sendPrompt(record, null);
+    return "completed";
+  }
+  if ((await passwordManager.getStatus()).state !== "unlocked") {
+    return "vault-locked";
+  }
+  const currentOrigin = record.controller.getActiveTabOrigin(candidate.tabId);
+  if (!areCredentialOriginsAffiliated(candidate.origin, currentOrigin)) {
+    clearPendingPasswordCandidate(promptId);
+    throw new Error("The login page changed origin before the password was saved.");
+  }
+  await passwordManager.saveCredentialCandidate(candidate.origin, candidate.username, candidate.password);
+  clearPendingPasswordCandidate(promptId);
+  sendPrompt(record, null);
+  return "completed";
+}
+
+function handlePasswordNavigation(recordId: string, tabId: string, origin: string): void {
+  const candidate = [...pendingPasswordCandidates.values()].find(
+    (item) => item.recordId === recordId && item.tabId === tabId && item.origin !== origin,
+  );
+  if (!candidate) {
+    const record = [...windowRecords.values()].find((item) => item.id === recordId);
+    if (record) sendAutofillSnapshot(record, null);
+    return;
+  }
+  const record = [...windowRecords.values()].find((item) => item.id === recordId);
+  if (record) void finalizePasswordCandidate(record, candidate);
+}
+
+function clearPendingPasswordCandidate(promptId: string): void {
+  const candidate = pendingPasswordCandidates.get(promptId);
+  if (!candidate) return;
+  clearTimeout(candidate.timer);
+  pendingPasswordCandidates.delete(promptId);
+  const record = [...windowRecords.values()].find((item) => item.id === candidate.recordId);
+  if (record) sendPrompt(record, null);
+}
+
+function clearPendingPasswordCandidates(recordId: string, tabId?: string): void {
+  for (const candidate of pendingPasswordCandidates.values()) {
+    if (candidate.recordId === recordId && (!tabId || candidate.tabId === tabId)) clearPendingPasswordCandidate(candidate.promptId);
+  }
+}
+
+function clearAllPendingPasswordCandidates(): void {
+  for (const candidate of pendingPasswordCandidates.values()) clearPendingPasswordCandidate(candidate.promptId);
+}
+
+function sendPrompt(record: WindowRecord, prompt: PasswordPromptSnapshot | null): void {
+  if (!record.window.isDestroyed() && !record.window.webContents.isDestroyed()) record.window.webContents.send(IPC.passwordManagerPromptChanged, prompt);
+}
+
+function sendAutofillSnapshot(record: WindowRecord, snapshot: PasswordAutofillSnapshot | null): void {
+  if (!record.window.isDestroyed() && !record.window.webContents.isDestroyed()) record.window.webContents.send(IPC.passwordManagerAutofillChanged, snapshot);
+}
+
+function readPasswordPageMessage(value: unknown): PasswordPageMessage | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const kind = candidate.kind;
+  const origin = typeof candidate.origin === "string" ? normalizeHttpOrigin(candidate.origin) : "";
+  if (!origin) return null;
+  if (kind === "field-focused" && (candidate.field === "username" || candidate.field === "password")) {
+    return { kind, origin, field: candidate.field };
+  }
+  if (kind === "login-transition") return { kind, origin, likelySuccess: candidate.likelySuccess === true };
+  if (kind === "candidate-submitted" && typeof candidate.actionOrigin === "string" && typeof candidate.username === "string" && typeof candidate.password === "string") {
+    return { kind, origin, actionOrigin: normalizeHttpOrigin(candidate.actionOrigin), username: candidate.username.slice(0, 512), password: candidate.password.slice(0, 4096) };
+  }
+  return null;
+}
+
+function readPasswordPromptAction(value: unknown): PasswordPromptAction {
+  if (value === "save" || value === "update" || value === "dismiss" || value === "never-save") return value;
+  throw new Error("Invalid password prompt action.");
 }
 
 function syncSettingsToOtherWindows(source: WindowRecord): void {
@@ -1516,8 +1777,16 @@ function readPasswordManagerSettings(value: unknown): PasswordManagerSettings {
   if (![0, 1, 5, 15, 30, 60].includes(Number(candidate.autoLockMinutes))) throw new Error("Invalid password vault auto-lock timeout.");
   if (![0, 15, 30, 60].includes(Number(candidate.clipboardClearSeconds))) throw new Error("Invalid password clipboard timeout.");
   return {
+    offerToSavePasswords: readBoolean(candidate.offerToSavePasswords, "save password setting"),
+    offerToUpdatePasswords: readBoolean(candidate.offerToUpdatePasswords, "update password setting"),
     offerAutofill: readBoolean(candidate.offerAutofill, "password autofill setting"),
     autofillUsername: readBoolean(candidate.autofillUsername, "username autofill setting"),
+    requireUserGestureForPassword: readBoolean(candidate.requireUserGestureForPassword, "password gesture setting"),
+    requireVaultUnlock: readBoolean(candidate.requireVaultUnlock, "vault unlock setting"),
+    allowInsecureHttpAutofill: readBoolean(candidate.allowInsecureHttpAutofill, "insecure autofill setting"),
+    neverSaveOrigins: readStringArray(candidate.neverSaveOrigins, "never-save origin", 200, 2048)
+      .map((origin) => normalizeHttpOrigin(origin))
+      .filter(Boolean),
     autoLockMinutes: candidate.autoLockMinutes!,
     lockOnAppClose: readBoolean(candidate.lockOnAppClose, "vault app-close lock setting"),
     lockOnAllWindowsClosed: readBoolean(candidate.lockOnAllWindowsClosed, "vault window-close lock setting"),

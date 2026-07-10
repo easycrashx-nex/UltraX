@@ -29,6 +29,9 @@ import type {
   PasswordHealthSummary,
   PasswordImportSummary,
   PasswordManagerStatus,
+  PasswordAutofillSnapshot,
+  PasswordPromptAction,
+  PasswordPromptSnapshot,
   PasswordVaultItemDisplay,
   PasswordVaultItemInput,
   PasswordVaultItemUpdate,
@@ -125,6 +128,9 @@ const IPC = {
   passwordManagerImportBackup: "password-manager:import-backup",
   passwordManagerChangeMaster: "password-manager:change-master",
   passwordManagerDeleteVault: "password-manager:delete-vault",
+  passwordManagerPromptAction: "password-manager:prompt-action",
+  passwordManagerPromptChanged: "password-manager:prompt-changed",
+  passwordManagerAutofillChanged: "password-manager:autofill-changed",
   minimizeWindow: "window:minimize",
   toggleMaximizeWindow: "window:toggle-maximize",
   closeWindow: "window:close",
@@ -269,6 +275,8 @@ const api: UltraXApi = {
       invoke<void>(IPC.passwordManagerChangeMaster, currentPassword, newPassword),
     deleteVault: (masterPassword: string) =>
       invoke<void>(IPC.passwordManagerDeleteVault, masterPassword),
+    promptAction: (promptId: string, action: PasswordPromptAction) =>
+      invoke<"completed" | "vault-locked">(IPC.passwordManagerPromptAction, promptId, action),
     onStatusChanged: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, status: PasswordManagerStatus) => callback(status);
       ipcRenderer.on(IPC.passwordManagerStatusChanged, listener);
@@ -324,6 +332,18 @@ const api: UltraXApi = {
 
     ipcRenderer.on(IPC.updateStatusChanged, listener);
     return () => ipcRenderer.removeListener(IPC.updateStatusChanged, listener);
+  },
+
+  onPasswordPromptChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, prompt: PasswordPromptSnapshot | null) => callback(prompt);
+    ipcRenderer.on(IPC.passwordManagerPromptChanged, listener);
+    return () => ipcRenderer.removeListener(IPC.passwordManagerPromptChanged, listener);
+  },
+
+  onPasswordAutofillChanged: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: PasswordAutofillSnapshot | null) => callback(snapshot);
+    ipcRenderer.on(IPC.passwordManagerAutofillChanged, listener);
+    return () => ipcRenderer.removeListener(IPC.passwordManagerAutofillChanged, listener);
   },
 };
 

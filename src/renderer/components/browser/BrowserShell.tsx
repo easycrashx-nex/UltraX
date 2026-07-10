@@ -9,6 +9,7 @@ import type {
   ShortcutAction,
   UpdateStatusSnapshot,
 } from "@shared/types";
+import type { PasswordAutofillSnapshot, PasswordPromptSnapshot } from "@shared/password-manager";
 import { resolveShortcutAction } from "@shared/shortcuts";
 import { calculateBrowserViewInsets, QUICK_SETTINGS_PANEL_WIDTH } from "@shared/browser-layout";
 import { AlertTriangle, RotateCw, ShieldCheck } from "lucide-react";
@@ -20,6 +21,7 @@ import { FindBar } from "./FindBar";
 import { NewTabPage } from "./NewTabPage";
 import { QuickSettings } from "./QuickSettings";
 import { SettingsPage } from "./SettingsPage";
+import { PasswordAutofillPopover, PasswordSavePrompt } from "./PasswordSecurityOverlays";
 import { SidePanel } from "./SidePanel";
 import { TabStrip } from "./TabStrip";
 import { Toolbar } from "./Toolbar";
@@ -37,6 +39,8 @@ export function BrowserShell({ state }: BrowserShellProps) {
     useState<SettingsCategoryId>("general");
   const [runtimeInfo, setRuntimeInfo] = useState<RuntimeInfo | null>(null);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatusSnapshot | null>(null);
+  const [passwordPrompt, setPasswordPrompt] = useState<PasswordPromptSnapshot | null>(null);
+  const [autofillSnapshot, setAutofillSnapshot] = useState<PasswordAutofillSnapshot | null>(null);
   const [extensionStoreItems, setExtensionStoreItems] = useState<ExtensionStoreItem[]>([]);
   const [extensionPanel, setExtensionPanel] = useState<ExtensionPanelDescriptor | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
@@ -116,6 +120,9 @@ export function BrowserShell({ state }: BrowserShellProps) {
     void window.ultraX.getUpdateStatus().then(setUpdateStatus);
     return window.ultraX.onUpdateStatusChanged(setUpdateStatus);
   }, []);
+
+  useEffect(() => window.ultraX.onPasswordPromptChanged(setPasswordPrompt), []);
+  useEffect(() => window.ultraX.onPasswordAutofillChanged(setAutofillSnapshot), []);
 
   useEffect(() => {
     void window.ultraX.listExtensionStore().then(setExtensionStoreItems);
@@ -319,6 +326,40 @@ export function BrowserShell({ state }: BrowserShellProps) {
           setQuickSettingsOpen((open) => !open);
         }}
       />
+
+      {passwordPrompt && (
+        <PasswordSavePrompt
+          prompt={passwordPrompt}
+          onAction={(action) => {
+            void window.ultraX.passwordManager.promptAction(passwordPrompt.promptId, action)
+              .then((result) => {
+                if (result === "vault-locked") {
+                  openSettings("passwords");
+                } else if (action !== "save" && action !== "update") {
+                  setPasswordPrompt(null);
+                }
+              })
+              .catch((error) => window.alert(error instanceof Error ? error.message : "Password action failed."));
+          }}
+          onOpenPasswords={() => openSettings("passwords")}
+        />
+      )}
+
+      {autofillSnapshot && (
+        <PasswordAutofillPopover
+          snapshot={autofillSnapshot}
+          onDismiss={() => setAutofillSnapshot(null)}
+          onManage={() => {
+            setAutofillSnapshot(null);
+            openSettings("passwords");
+          }}
+          onFill={(itemId) => {
+            void window.ultraX.passwordManager.fill({ itemId, tabId: autofillSnapshot.tabId })
+              .then(() => setAutofillSnapshot(null))
+              .catch((error) => window.alert(error instanceof Error ? error.message : "Autofill was blocked."));
+          }}
+        />
+      )}
 
       <FindBar
         open={findOpen}
