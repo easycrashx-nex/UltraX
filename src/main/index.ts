@@ -1,5 +1,6 @@
 import {
   app,
+  autoUpdater as nativeAutoUpdater,
   BrowserWindow,
   dialog,
   ipcMain,
@@ -60,6 +61,7 @@ const windowRecords = new Map<number, WindowRecord>();
 let storage = undefined as unknown as StorageService;
 let passwordManager = undefined as unknown as PasswordManagerService;
 let ipcHandlersRegistered = false;
+let updateQuitRequested = false;
 
 const shouldUseDevServer = !app.isPackaged && process.env.ULTRAX_DEV_SERVER === "1";
 const devServerUrl = process.env.VITE_DEV_SERVER_URL ?? "http://127.0.0.1:5173";
@@ -155,7 +157,7 @@ function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
   windowRecords.set(webContentsId, record);
 
   window.on("close", (event) => {
-    if (record.allowWindowClose) {
+    if (record.allowWindowClose || updateQuitRequested) {
       return;
     }
 
@@ -1814,6 +1816,7 @@ app.whenReady().then(async () => {
 });
 
 async function prepareForUpdateInstall(): Promise<void> {
+  updateQuitRequested = true;
   for (const record of windowRecords.values()) {
     record.controller.prepareForWindowClose(false);
     record.allowWindowClose = true;
@@ -1829,4 +1832,11 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   if (getCurrentPasswordManagerSettings().lockOnAppClose) void passwordManager.lock();
+});
+
+nativeAutoUpdater.on("before-quit-for-update", () => {
+  // electron-updater closes windows before this event. Keep the close path
+  // confirmation-free even if a secondary window is still being torn down.
+  updateQuitRequested = true;
+  for (const record of windowRecords.values()) record.allowWindowClose = true;
 });

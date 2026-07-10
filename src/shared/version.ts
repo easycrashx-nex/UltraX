@@ -1,8 +1,11 @@
-export const INTERNAL_FIX_VERSION = "1.1.9-fix.1";
-export const VISIBLE_FIX_VERSION = "1.1.9-Fix";
+export const INTERNAL_RELEASE_VERSION = "1.1.10";
+export const VISIBLE_RELEASE_VERSION = "1.1.10-DevU";
 
 export function formatVisibleVersion(version: string): string {
-  return /^1\.1\.9-fix(?:\.\d+)?$/i.test(version.trim()) ? VISIBLE_FIX_VERSION : version;
+  const normalized = version.trim();
+  if (/^1\.1\.10$/i.test(normalized)) return VISIBLE_RELEASE_VERSION;
+  if (/^1\.1\.9-fix(?:\.\d+)?$/i.test(normalized)) return "1.1.9-Fix";
+  return version;
 }
 
 export function isNewerVersion(candidate: string, current: string): boolean {

@@ -793,7 +793,7 @@ test("updates page opens and renders current version controls", async () => {
     await app.page.getByTestId("settings-category-updates").click();
 
     await expect(app.page.getByText("Current version")).toBeVisible();
-    await expect(app.page.getByText(/UltraX Browser (?:1\.1\.[89]|1\.1\.9-Fix)/).last()).toBeVisible();
+    await expect(app.page.getByText(/UltraX Browser (?:1\.1\.[89]|1\.1\.9-Fix|1\.1\.10-DevU)/).last()).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Check for Updates" })).toBeVisible();
     await expect(app.page.getByText(/SmartScreen warning until UltraX is code signed/i)).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Open Official Release" })).toBeVisible();

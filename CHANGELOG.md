@@ -1,5 +1,12 @@
 # UltraX Browser Changelog
 
+## 1.1.10-DevU - Silent In-App Updates
+
+- Added explicit update download and install actions.
+- Normal in-app installation now uses electron-updater's silent NSIS path and restarts UltraX automatically.
+- Added duplicate-install protection, lifecycle-safe update shutdown, and restart bypass for normal close confirmation.
+- Preserved the manual Setup fallback and separate portable build behavior.
+
 ## 1.1.9-Fix - Quick Settings and New Tab Layout Fix
 
 - Fixed native `WebContentsView` bounds covering the left edge of Quick Settings on remote pages.

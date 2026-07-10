@@ -12,6 +12,14 @@ export function formatUpdateError(error: unknown): string {
     return "Integrity check failed; the downloaded update was not installed. Retry the download or use the manual installer fallback.";
   }
 
+  if (normalized.includes("installer") && (normalized.includes("missing") || normalized.includes("not found") || normalized.includes("does not exist"))) {
+    return "The downloaded installer is no longer available. Download the update again or use the manual installer fallback.";
+  }
+
+  if (normalized.includes("already") && normalized.includes("install")) {
+    return "An update installation is already in progress. Wait for UltraX to restart before trying again.";
+  }
+
   if (
     normalized.includes("err_internet_disconnected") ||
     normalized.includes("enotfound") ||

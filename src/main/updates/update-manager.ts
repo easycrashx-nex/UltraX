@@ -4,6 +4,7 @@ import { IPC } from "../../shared/ipc";
 import type { BrowserSettings, UpdateSettings, UpdateStatusSnapshot } from "../../shared/types";
 import { formatUpdateError } from "../../shared/update-errors";
 import { formatVisibleVersion } from "../../shared/version";
+import { SILENT_UPDATE_INSTALL_OPTIONS } from "../../shared/update-install";
 
 const DEFAULT_RELEASES_URL = "https://github.com/easycrashx-nex/UltraX/releases";
 
@@ -18,6 +19,7 @@ type UpdaterEvent =
 
 export class UpdateManager {
   private static operation: "checking" | "downloading" | "installing" | undefined;
+  private static installInProgress = false;
   private readonly updater = autoUpdater;
   private readonly listeners: Array<{ event: UpdaterEvent; listener: (...args: never[]) => void }> = [];
   private snapshot: UpdateStatusSnapshot;
@@ -131,19 +133,27 @@ export class UpdateManager {
   }
 
   async installUpdate(): Promise<UpdateStatusSnapshot> {
-    if (UpdateManager.operation) return this.getStatus();
+    if (UpdateManager.operation || UpdateManager.installInProgress) return this.getStatus();
     if (this.snapshot.status !== "downloaded") {
       this.updateSnapshot({ status: "error", error: "No downloaded update is ready to install.", canCheck: true });
       return this.getStatus();
     }
 
     UpdateManager.operation = "installing";
+    UpdateManager.installInProgress = true;
     this.updateSnapshot({ status: "installing", error: undefined, canCheck: false, canDownload: false, canInstall: false });
     try {
       await this.prepareForInstall();
       this.logUpdateEvent("install-and-restart", this.snapshot.latestVersion);
-      this.updater.quitAndInstall(false, true);
+      // electron-updater delegates to the downloaded NSIS package. The first
+      // argument is the supported silent-install flag; the second requests
+      // automatic relaunch after the installer exits.
+      this.updater.quitAndInstall(
+        SILENT_UPDATE_INSTALL_OPTIONS.isSilent,
+        SILENT_UPDATE_INSTALL_OPTIONS.isForceRunAfter,
+      );
     } catch (error) {
+      UpdateManager.installInProgress = false;
       UpdateManager.operation = undefined;
       this.updateSnapshot({ status: "error", error: formatUpdateError(error), canCheck: true, canInstall: true });
     }
@@ -156,8 +166,11 @@ export class UpdateManager {
 
   private configureUpdater(): void {
     const settings = this.getUpdateSettings();
-    this.updater.autoDownload = settings.autoDownload;
+    // Downloads and installation are explicit actions in Settings. This also
+    // prevents an update from being installed as a side effect of auto-check.
+    this.updater.autoDownload = false;
     this.updater.autoInstallOnAppQuit = false;
+    this.updater.autoRunAppAfterInstall = true;
     this.updater.allowPrerelease = settings.channel !== "stable";
     this.updater.channel = settings.channel === "stable" ? "latest" : settings.channel;
   }
@@ -173,21 +186,21 @@ export class UpdateManager {
       this.updateSnapshot({ status: "checking", error: undefined, progress: undefined, updateAvailable: false, canCheck: false, canDownload: false, canInstall: false });
     });
     this.on("update-available", ((info: UpdateInfo) => {
-      UpdateManager.operation = this.getUpdateSettings().autoDownload ? "downloading" : undefined;
+      UpdateManager.operation = undefined;
       this.logUpdateEvent("update-available", info.version);
       const settings = this.getUpdateSettings();
       if (settings.notifyWhenAvailable && Notification.isSupported()) {
         new Notification({ title: "UltraX update available", body: `Version ${formatVisibleVersion(info.version)} is ready to download.` }).show();
       }
       this.updateSnapshot({
-        status: settings.autoDownload ? "downloading" : "available",
+        status: "available",
         latestVersion: formatVisibleVersion(info.version),
         releaseName: optionalString(info.releaseName),
         releaseDate: optionalString(info.releaseDate),
         releaseNotes: releaseNotesToText(info.releaseNotes),
         updateAvailable: true,
-        canCheck: !settings.autoDownload,
-        canDownload: !settings.autoDownload,
+        canCheck: true,
+        canDownload: true,
         canInstall: false,
       });
     }) as (...args: never[]) => void);

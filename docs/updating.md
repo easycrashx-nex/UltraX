@@ -6,9 +6,9 @@
 2. Go to Updates.
 3. Select the Stable channel.
 4. Click Check for Updates.
-5. If a newer version exists, open the official release from the displayed button.
+5. If a newer version exists, choose `Download Update` in UltraX or open the official release from the displayed fallback button.
 
-The check reads release metadata from the official GitHub Releases API. It does not download or execute an installer.
+The check reads release metadata from the official GitHub Releases provider. It does not install anything automatically.
 
 ## Install an update
 
@@ -23,8 +23,8 @@ Official releases: `https://github.com/easycrashx-nex/UltraX/releases`
 
 ## In-app installation
 
-UltraX does not automatically install unsigned native code. Automatic update installation can return after releases use a trusted Windows code-signing certificate and packaged signature verification is enforced.
+UltraX does not install an update without explicit confirmation. After `Install and Restart`, electron-updater runs the downloaded NSIS package through its supported silent path and relaunches UltraX.
 
-Installed NSIS builds use the official GitHub provider and electron-updater. The `v1.1.9-Fix` release publishes matching `latest.yml`, NSIS blockmap, and installer metadata. The update manager verifies HTTPS metadata and SHA-512 before `quitAndInstall`; it never starts a downloaded executable from the renderer.
+Installed NSIS builds use the official GitHub provider and electron-updater. The `v1.1.10` release publishes matching `latest.yml`, NSIS blockmap, and installer metadata. The update manager verifies HTTPS metadata and SHA-512 before `quitAndInstall(true, true)`; it never starts a downloaded executable from the renderer.
 
 Code signing is still not configured. This means Windows SmartScreen warnings may remain even though the release metadata and downloaded bytes are integrity-checked. Portable builds do not participate in in-app installation.
