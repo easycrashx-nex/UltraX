@@ -40,6 +40,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
   const [extensionPanel, setExtensionPanel] = useState<ExtensionPanelDescriptor | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
+  const [addressSuggestionsInset, setAddressSuggestionsInset] = useState(0);
   const [restoreTabsNextClose, setRestoreTabsNextClose] = useState(
     state.settings.closeBehavior !== "close-and-discard-session",
   );
@@ -129,10 +130,11 @@ export function BrowserShell({ state }: BrowserShellProps) {
     const rightInset = Math.max(panelInset, findOpen ? 380 : 0);
 
     void window.ultraX.setViewInsets({
+      top: addressSuggestionsInset,
       right: rightInset,
       bottom: state.downloads.length > 0 ? 76 : 0,
     });
-  }, [activePanel, extensionPanel, findOpen, quickSettingsOpen, settingsOpen, state.downloads.length]);
+  }, [activePanel, addressSuggestionsInset, extensionPanel, findOpen, quickSettingsOpen, settingsOpen, state.downloads.length]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -305,6 +307,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
         onToggleBookmark={() => void window.ultraX.toggleBookmark()}
         onOpenBookmark={(bookmarkId) => void window.ultraX.openBookmark(bookmarkId)}
         onOpenPanel={openPanel}
+        onAddressSuggestionsInsetChange={setAddressSuggestionsInset}
         onToggleQuickSettings={() => {
           setSettingsOpen(false);
           setActivePanel(null);

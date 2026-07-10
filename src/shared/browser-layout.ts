@@ -1,0 +1,2 @@
+export const BASE_BROWSER_CHROME_HEIGHT = 108;
+export const BROWSER_OVERLAY_GAP = 8;

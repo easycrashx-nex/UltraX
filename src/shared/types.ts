@@ -509,6 +509,7 @@ export type BrowserState = {
 };
 
 export type ViewInsets = {
+  top: number;
   right: number;
   bottom: number;
 };

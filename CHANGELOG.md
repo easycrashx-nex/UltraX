@@ -1,5 +1,16 @@
 # UltraX Browser Changelog
 
+## 1.1.7 - Address Suggestions Layering Patch
+
+### Fixed
+
+- Kept the full address-bar suggestion list visible above native web content, including while Settings or side panels are open.
+- Dynamically moved the active `WebContentsView` below the measured suggestion overlay and restored its normal position as soon as the overlay closes.
+
+### Tests
+
+- Added Electron E2E coverage that compares the real native view bounds against the rendered suggestion list and verifies the view returns to the normal chrome boundary.
+
 ## 1.1.6 - Browser Basics, Shortcuts, Find, and Bookmark Import
 
 ### Added

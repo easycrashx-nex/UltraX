@@ -1,9 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 import { _electron as electron, type ElectronApplication } from "playwright";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 type UltraXTestApp = {
   app: ElectronApplication;
@@ -47,27 +51,16 @@ async function launchUltraX(userDataDir?: string): Promise<UltraXTestApp> {
 
 async function closeUltraX({ app, userDataDir }: UltraXTestApp, removeUserData = true): Promise<void> {
   const childProcess = app.process();
-  try {
-    const exited = new Promise<void>((resolve) => {
-      if (childProcess.exitCode !== null) {
-        resolve();
-        return;
-      }
-      const killTimer = setTimeout(() => childProcess.kill(), 5_000);
-      childProcess.once("exit", () => {
-        clearTimeout(killTimer);
-        resolve();
-      });
-    });
-    await app.evaluate(({ BrowserWindow }) => {
-      setTimeout(() => {
-        for (const window of BrowserWindow.getAllWindows()) window.destroy();
-      }, 0);
-    });
-    await exited;
-  } catch {
-    if (!childProcess.killed && childProcess.exitCode === null) childProcess.kill();
+  if (!childProcess.killed && childProcess.exitCode === null) {
+    if (process.platform === "win32" && childProcess.pid) {
+      await execFileAsync("taskkill", ["/PID", String(childProcess.pid), "/T", "/F"]).catch(
+        () => undefined,
+      );
+    } else {
+      childProcess.kill();
+    }
   }
+  await Promise.race([app.close().catch(() => undefined), delay(2_000)]);
 
   if (removeUserData) {
     await removeUserDataDirectory(userDataDir);
@@ -359,7 +352,7 @@ test("settings persist across an app restart", async () => {
   }
 });
 
-test("fresh settings use v1.1.6 search, suggestions, home, and permission defaults", async () => {
+test("fresh settings use v1.1.7 search, suggestions, home, and permission defaults", async () => {
   const app = await launchUltraX();
 
   try {
@@ -653,6 +646,55 @@ test("tab context menu renders above the address bar", async () => {
   }
 });
 
+test("address suggestions remain above web content with Settings open", async () => {
+  const server = await startTestPageServer(
+    "<!doctype html><title>Suggestion Layer Test</title><main>Native web content</main>",
+  );
+  const app = await launchUltraX();
+
+  try {
+    await app.page.evaluate((url) => (window as any).ultraX.navigate(url), server.url);
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.isLoading;
+    }).toBe(false);
+
+    await app.page.locator('[data-quick-settings-trigger="true"]').click();
+    await app.page.getByRole("button", { name: "Open Settings" }).click();
+    await app.page.keyboard.press("Control+L");
+    await app.page.getByRole("combobox", { name: "Search or enter address" }).fill(
+      "https://search.brave.com/ask?q=a+long+query+that+keeps+the+address+suggestion+open",
+    );
+
+    const suggestions = app.page.getByRole("listbox");
+    await expect(suggestions).toBeVisible();
+    const suggestionsBox = await suggestions.boundingBox();
+    expect(suggestionsBox).not.toBeNull();
+    const requiredViewTop = Math.ceil(suggestionsBox!.y + suggestionsBox!.height);
+
+    await expect.poll(async () => {
+      const bounds = await app.app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        return window?.contentView.children.map((child) => child.getBounds()) ?? [];
+      });
+      return bounds[0]?.y ?? 0;
+    }).toBeGreaterThanOrEqual(requiredViewTop);
+
+    await app.page.keyboard.press("Escape");
+    await expect(suggestions).toBeHidden();
+    await expect.poll(async () => {
+      const bounds = await app.app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        return window?.contentView.children.map((child) => child.getBounds()) ?? [];
+      });
+      return bounds[0]?.y ?? 0;
+    }).toBe(108);
+  } finally {
+    await closeUltraX(app);
+    await server.close();
+  }
+});
+
 test("extensions workspace is recreated on startup and when opening Extensions settings", async () => {
   const userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "ultrax-e2e-extensions-"));
   const app = await launchUltraX(userDataDir);
@@ -687,7 +729,7 @@ test("updates page opens and renders current version controls", async () => {
     await app.page.getByTestId("settings-category-updates").click();
 
     await expect(app.page.getByText("Current version")).toBeVisible();
-    await expect(app.page.getByText(/UltraX Browser 1\.1\.6/)).toBeVisible();
+    await expect(app.page.getByText(/UltraX Browser 1\.1\.7/)).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Check for Updates" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Download Update" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Install and Restart" })).toBeVisible();

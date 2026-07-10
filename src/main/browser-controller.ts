@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { IPC } from "../shared/ipc";
+import { BASE_BROWSER_CHROME_HEIGHT } from "../shared/browser-layout";
 import type {
   Bookmark,
   BookmarkDuplicatePolicy,
@@ -59,7 +60,6 @@ import {
   parseBookmarkHtml,
 } from "./bookmark-import";
 
-const CHROME_HEIGHT = 108;
 const MAX_HISTORY_ENTRIES = 1000;
 const MAX_DOWNLOADS = 50;
 const MAX_CLOSED_TABS = 25;
@@ -88,7 +88,7 @@ export class BrowserController {
   private readonly extensionStore = new LocalExtensionStoreProvider();
   private state: BrowserState;
   private attachedView: WebContentsView | null = null;
-  private insets: ViewInsets = { right: 0, bottom: 0 };
+  private insets: ViewInsets = { top: 0, right: 0, bottom: 0 };
   private readonly onWindowBoundsChanged = () => this.layoutActiveView();
   private readonly windowId: string;
   private readonly initialSession?: BrowserWindowSession;
@@ -146,6 +146,7 @@ export class BrowserController {
 
   setViewInsets(insets: ViewInsets): void {
     this.insets = {
+      top: Math.max(0, Math.min(900, Math.round(insets.top))),
       right: Math.max(0, Math.min(1100, Math.round(insets.right))),
       bottom: Math.max(0, Math.min(140, Math.round(insets.bottom))),
     };
@@ -1479,9 +1480,12 @@ export class BrowserController {
     const bounds = this.window.getContentBounds();
     view.setBounds({
       x: 0,
-      y: CHROME_HEIGHT,
+      y: BASE_BROWSER_CHROME_HEIGHT + this.insets.top,
       width: Math.max(0, bounds.width - this.insets.right),
-      height: Math.max(0, bounds.height - CHROME_HEIGHT - this.insets.bottom),
+      height: Math.max(
+        0,
+        bounds.height - BASE_BROWSER_CHROME_HEIGHT - this.insets.top - this.insets.bottom,
+      ),
     });
   }
 

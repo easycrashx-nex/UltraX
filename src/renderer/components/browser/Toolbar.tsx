@@ -1,4 +1,5 @@
 import type { Bookmark, BrowserSettings, BrowserTab, HistoryEntry } from "@shared/types";
+import { BASE_BROWSER_CHROME_HEIGHT, BROWSER_OVERLAY_GAP } from "@shared/browser-layout";
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -51,6 +53,7 @@ type ToolbarProps = {
   onToggleBookmark: () => void;
   onOpenBookmark: (bookmarkId: string) => void;
   onOpenPanel: (panel: PanelId) => void;
+  onAddressSuggestionsInsetChange: (inset: number) => void;
   onToggleQuickSettings: () => void;
 };
 
@@ -90,6 +93,7 @@ export function Toolbar({
   onToggleBookmark,
   onOpenBookmark,
   onOpenPanel,
+  onAddressSuggestionsInsetChange,
   onToggleQuickSettings,
 }: ToolbarProps) {
   const bookmarked = isBookmarked(activeTab, bookmarks);
@@ -101,6 +105,7 @@ export function Toolbar({
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
   const [onlineSuggestions, setOnlineSuggestions] = useState<AddressSuggestion[]>([]);
   const onlineSuggestionCache = useRef(new Map<string, AddressSuggestion[]>());
+  const suggestionsRef = useRef<HTMLDivElement>(null);
   const trimmedAddress = addressValue.trim();
   const localSuggestions = useMemo(
     () => buildLocalSuggestions(trimmedAddress, settings, tabs, bookmarks, history, activeTab?.id),
@@ -117,6 +122,31 @@ export function Toolbar({
     [localSuggestions, onlineSuggestions],
   );
   const suggestionsOpen = focused && settings.searchSuggestions && suggestions.length > 0;
+
+  useLayoutEffect(() => {
+    const suggestionsElement = suggestionsRef.current;
+    if (!suggestionsOpen || !suggestionsElement) {
+      onAddressSuggestionsInsetChange(0);
+      return;
+    }
+
+    const updateInset = () => {
+      const bottom = suggestionsElement.getBoundingClientRect().bottom;
+      onAddressSuggestionsInsetChange(
+        Math.max(0, Math.ceil(bottom - BASE_BROWSER_CHROME_HEIGHT + BROWSER_OVERLAY_GAP)),
+      );
+    };
+    const resizeObserver = new ResizeObserver(updateInset);
+    resizeObserver.observe(suggestionsElement);
+    window.addEventListener("resize", updateInset);
+    updateInset();
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateInset);
+      onAddressSuggestionsInsetChange(0);
+    };
+  }, [onAddressSuggestionsInsetChange, suggestions.length, suggestionsOpen]);
 
   const submitAddress = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -333,6 +363,7 @@ export function Toolbar({
           </Button>
           {suggestionsOpen && (
             <div
+              ref={suggestionsRef}
               id="address-suggestions"
               role="listbox"
               className="glass-panel absolute left-0 right-0 top-[calc(100%+6px)] z-[85] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-1.5 text-foreground shadow-2xl shadow-black/35 backdrop-blur-xl"

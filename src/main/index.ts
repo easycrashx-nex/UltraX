@@ -659,11 +659,16 @@ function readInsets(value: unknown): ViewInsets {
   }
 
   const candidate = value as Partial<ViewInsets>;
-  if (!Number.isFinite(candidate.right) || !Number.isFinite(candidate.bottom)) {
+  if (
+    !Number.isFinite(candidate.top) ||
+    !Number.isFinite(candidate.right) ||
+    !Number.isFinite(candidate.bottom)
+  ) {
     throw new Error("Invalid view insets.");
   }
 
   return {
+    top: Number(candidate.top),
     right: Number(candidate.right),
     bottom: Number(candidate.bottom),
   };
