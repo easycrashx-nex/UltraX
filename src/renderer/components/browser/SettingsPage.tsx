@@ -3118,16 +3118,45 @@ function CategoryContent({
             />
           </SettingSection>
 
-          <SettingSection title="Secure Updates" detail="Version checks with manual installation from the official GitHub Release.">
+          <SettingSection title="Secure Updates" detail="Check, download, and restart from the official GitHub Release.">
             <InfoRow label="Status" detail={formatUpdateStatus(update)} />
             <InfoRow label="Latest version" detail={update.latestVersion ?? "Not checked yet"} />
             <InfoRow label="Last checked" detail={formatTimestamp(update.lastCheckedAt)} />
             <InfoRow label="Update source" detail={update.releasesUrl} />
             <InfoRow
               label="Installation"
-              detail="Manual until UltraX Windows releases use a trusted code-signing certificate."
+              detail="The signed metadata and SHA-512 are checked by electron-updater. Windows may still show a SmartScreen warning until UltraX is code signed."
             />
             {update.error && <InfoRow label="Update error" detail={update.error} />}
+            {update.progress && update.status === "downloading" && (
+              <div className="space-y-2 px-5 py-4" aria-live="polite">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Downloading {Math.round(update.progress.percent)}%</span>
+                  <span>
+                    {formatBytes(update.progress.transferred)}
+                    {update.progress.total > 0 ? ` / ${formatBytes(update.progress.total)}` : ""}
+                  </span>
+                </div>
+                <div
+                  className="h-2 overflow-hidden rounded-full bg-muted/60"
+                  role="progressbar"
+                  aria-label="Update download progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(update.progress.percent)}
+                >
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-300 motion-reduce:transition-none"
+                    style={{ width: `${Math.max(0, Math.min(100, update.progress.percent))}%` }}
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {update.progress.bytesPerSecond > 0
+                    ? `${formatBytes(update.progress.bytesPerSecond)}/s`
+                    : "Preparing download..."}
+                </div>
+              </div>
+            )}
             <InlineActions>
               <Button
                 type="button"
@@ -3140,6 +3169,30 @@ function CategoryContent({
                 <RefreshCw aria-hidden="true" />
                 Check for Updates
               </Button>
+              {update.canDownload && (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => runUpdateAction(onDownloadUpdate, "Update download finished.")}
+                  className="rounded-xl"
+                >
+                  <Download aria-hidden="true" />
+                  Download Update
+                </Button>
+              )}
+              {update.canInstall && (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => runUpdateAction(onInstallUpdate, "UltraX will restart to finish the update.")}
+                  className="rounded-xl"
+                >
+                  <RotateCcw aria-hidden="true" />
+                  Install and Restart
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -3172,15 +3225,15 @@ function CategoryContent({
           )}
 
           <StatusCard
-            title="Manual installer updates still work"
-            detail="Download the latest Setup EXE from the official GitHub Release and verify its published SHA256 checksum before running it."
+            title="Installer fallback"
+            detail="If an in-app update is unavailable, download the Setup EXE from the official GitHub Release. Portable builds remain manual and do not use in-app installation."
             icon={<Download aria-hidden="true" />}
           />
 
-          <SettingSection title="Release Security" detail="What is prepared now and what still needs production setup.">
-            <InfoRow label="Provider" detail="Read-only GitHub Releases API over HTTPS." />
-            <InfoRow label="Install behavior" detail="Manual installer only; UltraX does not download or execute update binaries." />
-            <InfoRow label="Code signing" detail="Not configured yet. Automatic installation stays disabled." />
+          <SettingSection title="Release Security" detail="How UltraX verifies and installs updates.">
+            <InfoRow label="Provider" detail="Official GitHub Releases over HTTPS with electron-builder metadata." />
+            <InfoRow label="Integrity" detail="latest.yml SHA-512 and the installer blockmap must match the downloaded update." />
+            <InfoRow label="Code signing" detail="Not configured yet. SmartScreen warnings can still appear until a trusted Windows certificate is available." />
           </SettingSection>
         </>
       );

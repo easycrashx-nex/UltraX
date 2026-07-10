@@ -30,27 +30,24 @@ function removeOldChecksumFiles(directory) {
   }
 }
 
-function removeUnsignedUpdaterMetadata(directory) {
-  for (const name of readdirSync(directory)) {
-    const currentBlockmap =
-      name.startsWith(`UltraX-Browser-Setup-${version}-`) && name.endsWith(".exe.blockmap");
-    if (name === "latest.yml" || currentBlockmap) {
-      unlinkSync(path.join(directory, name));
-    }
-  }
-}
-
 function sha256(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
-removeUnsignedUpdaterMetadata(releaseDir);
 removeOldChecksumFiles(releaseDir);
 
 const targets = collectTargets(releaseDir);
 
 if (targets.length < 2) {
   throw new Error(`Expected current ${version} installer and portable executable before checksums.`);
+}
+
+const setupName = `UltraX-Browser-Setup-${version}-x64.exe`;
+if (!readdirSync(releaseDir).includes(`${setupName}.blockmap`)) {
+  throw new Error(`Missing electron-builder updater blockmap: ${setupName}.blockmap`);
+}
+if (!readdirSync(releaseDir).includes("latest.yml")) {
+  throw new Error("Missing electron-builder updater metadata: latest.yml");
 }
 
 const lines = targets.map((target) => {

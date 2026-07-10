@@ -1,6 +1,6 @@
 # UltraX Browser Changelog
 
-## 1.1.9 - Security and Release Hardening
+## 1.1.9 - In-App Updates and Release Hardening
 
 ### Security
 
@@ -16,7 +16,9 @@
 - Added focused regression coverage for all four validated security findings and safe control cases.
 - Added a packaged Electron security smoke test for extension-panel sandboxing.
 - Made unit tests part of the Build workflow and Electron E2E tests part of push, pull-request, and release validation.
-- Changed unsigned releases to publish Setup, Portable, and SHA256 assets without auto-updater metadata.
+- Restored electron-updater metadata for the existing unsigned Windows release: `latest.yml` and the NSIS blockmap now ship with the matching installer.
+- Added in-app check, download progress, retryable errors, and Install and Restart flow with session persistence and vault locking.
+- Kept the Setup installer as the verified fallback and the Portable build as a manual-only artifact.
 
 ## 1.1.8 - Scrollable Tabs and Secure Local Password Manager
 

@@ -8,7 +8,7 @@ The project includes:
 - New Tab shader background
 - Bookmarks, history, downloads, privacy, performance, and accessibility controls
 - Native UltraX Extensions runtime with local sample extensions
-- Read-only GitHub Releases update checks with manual verified installation
+- GitHub Releases update checks with in-app download and restart installation
 - NSIS installer and portable Windows builds
 
 ## Requirements
@@ -46,7 +46,7 @@ Outputs are written to `release/` and should not be committed. Upload installers
 
 ## Updates
 
-UltraX checks the official GitHub Releases API through Settings -> Updates. Until Windows releases are signed with a trusted certificate, installation is manual: download the Setup or Portable executable from `easycrashx-nex/UltraX` and verify its published SHA256 checksum.
+UltraX checks the official GitHub Releases feed through Settings -> Updates. Installed NSIS builds can download and install the matching update in-app using `latest.yml` and electron-updater's SHA-512 validation. The Setup executable remains a fallback and Portable builds remain manual. Until Windows releases are signed with a trusted certificate, SmartScreen warnings may still appear; SHA256 values are published for manual verification.
 
 Read:
 

@@ -41,19 +41,10 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
-      - name: Verify manual release assets
+      - name: Verify release assets and updater metadata
         shell: pwsh
         run: |
-          $version = node -p "require('./package.json').version"
-          foreach ($path in @(
-            "release/UltraX-Browser-Setup-$version-x64.exe",
-            "release/UltraX-Browser-$version-Portable-x64.exe",
-            "release/SHA256SUMS.txt"
-          )) {
-            if (!(Test-Path $path)) {
-              throw "Missing required manual release asset: $path"
-            }
-          }
+          npm run validate:release
 
       - name: Packaged security smoke test
         run: npm run test:e2e:packaged
@@ -77,23 +68,47 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
+          if ($env:GITHUB_REF_NAME -ne "v1.1.9") { throw "This release workflow is intentionally locked to v1.1.9." }
           $setup = "UltraX-Browser-Setup-$version-x64.exe"
           $portable = "UltraX-Browser-$version-Portable-x64.exe"
+          $expected = @(
+            $setup,
+            "$setup.blockmap",
+            "latest.yml",
+            $portable,
+            "$setup.sha256",
+            "$portable.sha256",
+            "SHA256SUMS.txt"
+          )
 
           $assets = @()
           $assets += Get-Item "release/$setup" -ErrorAction Stop
+          $assets += Get-Item "release/$setup.blockmap" -ErrorAction Stop
+          $assets += Get-Item "release/latest.yml" -ErrorAction Stop
           $assets += Get-Item "release/$portable" -ErrorAction Stop
           $assets += Get-Item "release/$setup.sha256" -ErrorAction Stop
           $assets += Get-Item "release/$portable.sha256" -ErrorAction Stop
           $assets += Get-Item "release/SHA256SUMS.txt" -ErrorAction Stop
 
-          if ($assets.Count -ne 5) {
-            throw "Expected installer, portable executable, and checksum release assets."
+          if ($assets.Count -ne 7) {
+            throw "Expected NSIS installer, blockmap, latest.yml, portable executable, and checksums."
+          }
+
+          $existing = gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
+          foreach ($name in ($existing -split "`r?`n" | Where-Object { $_ -and ($_ -notin $expected) })) {
+            gh release delete-asset $env:GITHUB_REF_NAME $name --repo $env:GITHUB_REPOSITORY --yes
           }
 
           foreach ($asset in $assets) {
             gh release upload $env:GITHUB_REF_NAME $asset.FullName --clobber
           }
+
+          $published = gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --json assets --jq '.assets[].name'
+          $publishedNames = $published -split "`r?`n" | Where-Object { $_ }
+          foreach ($name in $expected) {
+            if ($name -notin $publishedNames) { throw "Release is missing published asset: $name" }
+          }
+          if (($publishedNames | Measure-Object).Count -ne $expected.Count) { throw "Release contains unexpected or duplicate asset names." }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

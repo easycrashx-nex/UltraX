@@ -14,7 +14,7 @@ This release hardens the boundaries added in recent browser, extension, and pass
 
 UltraX still checks the official GitHub Releases feed and shows the newest version, release notes, and release link. Automatic binary download and installation are disabled until Windows releases use a trusted code-signing certificate.
 
-For v1.1.9, download the Setup or Portable executable from the official GitHub Release and verify the matching SHA256 value in `SHA256SUMS.txt`.
+Installed v1.1.8 NSIS builds can use Settings -> Updates to detect, download, and install v1.1.9. The Setup executable remains the fallback and Portable builds remain manual. Verify the matching SHA256 value in `SHA256SUMS.txt` when installing manually.
 
 ## Validation
 

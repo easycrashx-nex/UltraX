@@ -40,7 +40,7 @@ Use this checklist before publishing a public UltraX Browser Windows release.
 - Upload `SHA256SUMS.txt`.
 - Upload individual `.sha256` files.
 - Confirm `SHA256SUMS.txt` contains Setup and Portable entries.
-- Do not publish auto-updater metadata while releases are unsigned.
+- Publish electron-builder `latest.yml` and the matching NSIS blockmap even while code signing is pending; document the SmartScreen limitation separately and validate the metadata plus SHA-512 before release.
 
 ## False Positive Handling
 

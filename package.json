@@ -24,9 +24,10 @@
     "start": "npm run build && electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run dist:win",
-    "dist:win": "npm run build && electron-builder --win nsis portable --x64 --publish never && npm run checksum:release",
-    "dist:win:arm64": "npm run build && electron-builder --win nsis portable --arm64 --publish never && npm run checksum:release",
+    "dist:win": "npm run build && node scripts/clean-release-dir.mjs && electron-builder --win nsis portable --x64 --publish never && npm run checksum:release",
+    "dist:win:arm64": "npm run build && node scripts/clean-release-dir.mjs && electron-builder --win nsis portable --arm64 --publish never && npm run checksum:release",
     "checksum:release": "node scripts/generate-release-checksums.mjs",
+    "validate:release": "node scripts/validate-release-assets.mjs --tag=v1.1.9",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && playwright test --headed",
     "test:e2e:packaged": "cross-env \"ULTRAX_E2E_EXECUTABLE=release/win-unpacked/UltraX Browser.exe\" playwright test --grep \"packaged security boundaries\"",
@@ -38,6 +39,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "csv-parse": "^7.0.1",
+    "electron-updater": "^6.8.9",
     "htmlparser2": "^10.0.0",
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",
@@ -105,6 +107,7 @@
     "win": {
       "icon": "build/icon.ico",
       "requestedExecutionLevel": "asInvoker",
+      "verifyUpdateCodeSignature": false,
       "signtoolOptions": {
         "publisherName": "UltraX"
       },
@@ -126,6 +129,14 @@
     "portable": {
       "artifactName": "UltraX-Browser-${version}-Portable-${arch}.${ext}"
     },
-    "artifactName": "UltraX-Browser-Setup-${version}-${arch}.${ext}"
+    "artifactName": "UltraX-Browser-Setup-${version}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "easycrashx-nex",
+        "repo": "UltraX",
+        "releaseType": "release"
+      }
+    ]
   }
 }

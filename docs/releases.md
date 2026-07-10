@@ -90,7 +90,7 @@ Until trusted Windows code signing is configured, the release must contain:
 - `SHA256SUMS.txt`
 - individual `.sha256` files
 
-Do not upload `latest.yml` or blockmaps for unsigned releases. This prevents older automatic updater clients from installing unsigned native code.
+Upload the `latest.yml` and NSIS blockmap generated alongside the installer even while code signing is pending. The updater validates HTTPS metadata and SHA-512; the remaining SmartScreen limitation must be documented honestly and is separate from metadata integrity.
 
 ## Production Checklist
 

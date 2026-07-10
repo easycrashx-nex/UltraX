@@ -140,6 +140,7 @@ function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
         },
       });
     },
+    prepareForUpdateInstall,
   );
 
   const record: WindowRecord = {
@@ -187,6 +188,7 @@ function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
   window.on("closed", () => {
     const lockWhenAllWindowsClose = record.controller.getState().settings.passwordManager.lockOnAllWindowsClosed;
     record.controller.dispose();
+    record.updateManager.dispose();
     windowRecords.delete(webContentsId);
     if (windowRecords.size === 0 && lockWhenAllWindowsClose) {
       void passwordManager.lock();
@@ -1809,6 +1811,14 @@ app.whenReady().then(async () => {
     }
   });
 });
+
+async function prepareForUpdateInstall(): Promise<void> {
+  for (const record of windowRecords.values()) {
+    record.controller.prepareForWindowClose(false);
+    record.allowWindowClose = true;
+  }
+  await passwordManager.lock();
+}
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {

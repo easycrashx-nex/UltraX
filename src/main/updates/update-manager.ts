@@ -1,34 +1,32 @@
-import { app, BrowserWindow, net, Notification, shell } from "electron";
+import { app, BrowserWindow, Notification, shell } from "electron";
+import { autoUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater";
 import { IPC } from "../../shared/ipc";
-import type { BrowserSettings, UpdateChannel, UpdateSettings, UpdateStatusSnapshot } from "../../shared/types";
-import { isNewerVersion } from "../../shared/version";
+import type { BrowserSettings, UpdateSettings, UpdateStatusSnapshot } from "../../shared/types";
+import { formatUpdateError } from "../../shared/update-errors";
 
-const ULTRAX_GITHUB_REPOSITORY = "easycrashx-nex/UltraX";
-const DEFAULT_RELEASES_URL = `https://github.com/${ULTRAX_GITHUB_REPOSITORY}/releases`;
-const MANUAL_UPDATE_MESSAGE =
-  "Automatic installation is disabled until UltraX releases are Windows code signed. Open the verified GitHub Release and install it manually.";
+const DEFAULT_RELEASES_URL = "https://github.com/easycrashx-nex/UltraX/releases";
 
 type UpdateSettingsPatch = Partial<BrowserSettings["updates"]>;
-
-type GitHubRelease = {
-  tag_name?: unknown;
-  name?: unknown;
-  body?: unknown;
-  published_at?: unknown;
-  html_url?: unknown;
-  draft?: unknown;
-  prerelease?: unknown;
-};
+type UpdaterEvent =
+  | "checking-for-update"
+  | "update-available"
+  | "update-not-available"
+  | "download-progress"
+  | "update-downloaded"
+  | "error";
 
 export class UpdateManager {
+  private static operation: "checking" | "downloading" | "installing" | undefined;
+  private readonly updater = autoUpdater;
+  private readonly listeners: Array<{ event: UpdaterEvent; listener: (...args: never[]) => void }> = [];
   private snapshot: UpdateStatusSnapshot;
   private initialized = false;
-  private selectedReleaseUrl: string | undefined;
 
   constructor(
     private readonly window: BrowserWindow,
     private readonly getUpdateSettings: () => UpdateSettings,
     private readonly patchUpdateSettings: (patch: UpdateSettingsPatch) => void,
+    private readonly prepareForInstall: () => Promise<void>,
   ) {
     const settings = this.getUpdateSettings();
     this.snapshot = {
@@ -38,7 +36,7 @@ export class UpdateManager {
       updateAvailable: false,
       lastCheckedAt: settings.lastCheckedAt,
       source: "github-releases",
-      releasesUrl: resolveReleasesUrl(),
+      releasesUrl: DEFAULT_RELEASES_URL,
       canCheck: true,
       canDownload: false,
       canInstall: false,
@@ -48,11 +46,17 @@ export class UpdateManager {
   init(): void {
     if (this.initialized) return;
     this.initialized = true;
+    this.configureUpdater();
+    this.registerUpdaterEvents();
+
     const settings = this.getUpdateSettings();
     this.updateSnapshot({ channel: settings.channel, lastCheckedAt: settings.lastCheckedAt });
-    if (settings.autoCheck) {
-      setTimeout(() => void this.checkForUpdates(), 2500);
-    }
+    if (settings.autoCheck) setTimeout(() => void this.checkForUpdates(), 2500);
+  }
+
+  dispose(): void {
+    for (const { event, listener } of this.listeners) this.updater.removeListener(event, listener);
+    this.listeners.length = 0;
   }
 
   getStatus(): UpdateStatusSnapshot {
@@ -60,12 +64,13 @@ export class UpdateManager {
   }
 
   async checkForUpdates(): Promise<UpdateStatusSnapshot> {
-    if (this.snapshot.status === "checking") return this.getStatus();
+    if (UpdateManager.operation) return this.getStatus();
 
+    UpdateManager.operation = "checking";
     const settings = this.getUpdateSettings();
     const checkedAt = Date.now();
-    this.patchUpdateSettings({ lastCheckedAt: checkedAt, autoDownload: false });
-    this.selectedReleaseUrl = undefined;
+    this.patchUpdateSettings({ lastCheckedAt: checkedAt });
+    this.configureUpdater();
     this.updateSnapshot({
       status: "checking",
       channel: settings.channel,
@@ -79,147 +84,162 @@ export class UpdateManager {
     });
 
     if (!app.isPackaged) {
+      UpdateManager.operation = undefined;
       this.updateSnapshot({
         status: "error",
-        error: "Update checks require a packaged UltraX build. Open GitHub Releases for published versions.",
+        error: "Update checks require an installed UltraX build. Open the official GitHub Release when developing locally.",
         canCheck: true,
       });
       return this.getStatus();
     }
 
     try {
-      const release = await fetchRelease(settings.channel);
-      if (!release) {
-        this.updateSnapshot({
-          status: "not-available",
-          updateAvailable: false,
-          canCheck: true,
-        });
-        return this.getStatus();
-      }
-
-      const latestVersion = release.tagName.replace(/^v/, "");
-      const updateAvailable = isNewerVersion(latestVersion, app.getVersion());
-      this.selectedReleaseUrl = release.url;
-      if (updateAvailable && settings.notifyWhenAvailable && Notification.isSupported()) {
-        new Notification({
-          title: "UltraX update available",
-          body: `Version ${latestVersion} is available as a verified GitHub Release.`,
-        }).show();
-      }
-      this.updateSnapshot({
-        status: updateAvailable ? "available" : "not-available",
-        latestVersion,
-        releaseName: release.name,
-        releaseDate: release.publishedAt,
-        releaseNotes: release.notes,
-        updateAvailable,
-        canCheck: true,
-        canDownload: false,
-        canInstall: false,
-      });
+      await this.updater.checkForUpdates();
     } catch (error) {
-      this.updateSnapshot({
-        status: "error",
-        error: errorToMessage(error),
-        canCheck: true,
-      });
+      UpdateManager.operation = undefined;
+      this.updateSnapshot({ status: "error", error: formatUpdateError(error), canCheck: true });
     }
     return this.getStatus();
   }
 
   async downloadUpdate(): Promise<UpdateStatusSnapshot> {
-    this.updateSnapshot({ status: "error", error: MANUAL_UPDATE_MESSAGE, canCheck: true });
+    if (UpdateManager.operation) return this.getStatus();
+    if (this.snapshot.status !== "available") {
+      this.updateSnapshot({ status: "error", error: "No downloadable update is currently available.", canCheck: true });
+      return this.getStatus();
+    }
+
+    UpdateManager.operation = "downloading";
+    this.configureUpdater();
+    this.updateSnapshot({
+      status: "downloading",
+      error: undefined,
+      progress: { percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 },
+      canCheck: false,
+      canDownload: false,
+      canInstall: false,
+    });
+    try {
+      this.logUpdateEvent("download-started", this.snapshot.latestVersion);
+      await this.updater.downloadUpdate();
+    } catch (error) {
+      UpdateManager.operation = undefined;
+      this.updateSnapshot({ status: "error", error: formatUpdateError(error), canCheck: true });
+    }
     return this.getStatus();
   }
 
-  installUpdate(): UpdateStatusSnapshot {
-    this.updateSnapshot({ status: "error", error: MANUAL_UPDATE_MESSAGE, canCheck: true });
+  async installUpdate(): Promise<UpdateStatusSnapshot> {
+    if (UpdateManager.operation) return this.getStatus();
+    if (this.snapshot.status !== "downloaded") {
+      this.updateSnapshot({ status: "error", error: "No downloaded update is ready to install.", canCheck: true });
+      return this.getStatus();
+    }
+
+    UpdateManager.operation = "installing";
+    this.updateSnapshot({ status: "installing", error: undefined, canCheck: false, canDownload: false, canInstall: false });
+    try {
+      await this.prepareForInstall();
+      this.logUpdateEvent("install-and-restart", this.snapshot.latestVersion);
+      this.updater.quitAndInstall(false, true);
+    } catch (error) {
+      UpdateManager.operation = undefined;
+      this.updateSnapshot({ status: "error", error: formatUpdateError(error), canCheck: true, canInstall: true });
+    }
     return this.getStatus();
   }
 
   async openReleasesPage(): Promise<void> {
-    const url = this.selectedReleaseUrl ?? this.snapshot.releasesUrl;
-    if (!url.startsWith("https://github.com/easycrashx-nex/UltraX/releases")) {
-      throw new Error("Release URL is outside the official UltraX GitHub repository.");
-    }
-    await shell.openExternal(url);
+    await shell.openExternal(DEFAULT_RELEASES_URL);
+  }
+
+  private configureUpdater(): void {
+    const settings = this.getUpdateSettings();
+    this.updater.autoDownload = settings.autoDownload;
+    this.updater.autoInstallOnAppQuit = false;
+    this.updater.allowPrerelease = settings.channel !== "stable";
+    this.updater.channel = settings.channel === "stable" ? "latest" : settings.channel;
+  }
+
+  private on(event: UpdaterEvent, listener: (...args: never[]) => void): void {
+    this.updater.on(event, listener);
+    this.listeners.push({ event, listener });
+  }
+
+  private registerUpdaterEvents(): void {
+    this.on("checking-for-update", () => {
+      this.logUpdateEvent("checking-for-update");
+      this.updateSnapshot({ status: "checking", error: undefined, progress: undefined, updateAvailable: false, canCheck: false, canDownload: false, canInstall: false });
+    });
+    this.on("update-available", ((info: UpdateInfo) => {
+      UpdateManager.operation = this.getUpdateSettings().autoDownload ? "downloading" : undefined;
+      this.logUpdateEvent("update-available", info.version);
+      const settings = this.getUpdateSettings();
+      if (settings.notifyWhenAvailable && Notification.isSupported()) {
+        new Notification({ title: "UltraX update available", body: `Version ${info.version} is ready to download.` }).show();
+      }
+      this.updateSnapshot({
+        status: settings.autoDownload ? "downloading" : "available",
+        latestVersion: info.version,
+        releaseName: optionalString(info.releaseName),
+        releaseDate: optionalString(info.releaseDate),
+        releaseNotes: releaseNotesToText(info.releaseNotes),
+        updateAvailable: true,
+        canCheck: !settings.autoDownload,
+        canDownload: !settings.autoDownload,
+        canInstall: false,
+      });
+    }) as (...args: never[]) => void);
+    this.on("update-not-available", ((info: UpdateInfo) => {
+      UpdateManager.operation = undefined;
+      this.logUpdateEvent("update-not-available", info.version);
+      this.updateSnapshot({ status: "not-available", latestVersion: info.version, releaseName: optionalString(info.releaseName), releaseDate: optionalString(info.releaseDate), releaseNotes: releaseNotesToText(info.releaseNotes), updateAvailable: false, canCheck: true, canDownload: false, canInstall: false });
+    }) as (...args: never[]) => void);
+    this.on("download-progress", ((progress: ProgressInfo) => {
+      this.updateSnapshot({ status: "downloading", progress: { percent: clampPercent(progress.percent), transferred: progress.transferred, total: progress.total, bytesPerSecond: progress.bytesPerSecond }, canCheck: false, canDownload: false, canInstall: false });
+    }) as (...args: never[]) => void);
+    this.on("update-downloaded", ((info: UpdateInfo) => {
+      UpdateManager.operation = undefined;
+      this.logUpdateEvent("update-downloaded", info.version);
+      this.updateSnapshot({ status: "downloaded", latestVersion: info.version, releaseName: optionalString(info.releaseName), releaseDate: optionalString(info.releaseDate), releaseNotes: releaseNotesToText(info.releaseNotes), updateAvailable: true, progress: undefined, canCheck: true, canDownload: false, canInstall: true });
+    }) as (...args: never[]) => void);
+    this.on("error", ((error: Error) => {
+      UpdateManager.operation = undefined;
+      this.logUpdateEvent("error");
+      this.updateSnapshot({ status: "error", error: formatUpdateError(error), canCheck: true, canDownload: false, canInstall: this.snapshot.status === "downloaded" });
+    }) as (...args: never[]) => void);
+  }
+
+  private logUpdateEvent(event: string, version?: string): void {
+    console.info(`[updates] ${event}${version ? ` (${version})` : ""}`);
   }
 
   private updateSnapshot(patch: Partial<UpdateStatusSnapshot>): void {
     const settings = this.getUpdateSettings();
-    this.snapshot = {
-      ...this.snapshot,
-      ...patch,
-      currentVersion: app.getVersion(),
-      channel: settings.channel,
-      releasesUrl: resolveReleasesUrl(),
-      source: "github-releases",
-      canDownload: false,
-      canInstall: false,
-    };
-    this.window.webContents.send(IPC.updateStatusChanged, this.getStatus());
+    this.snapshot = { ...this.snapshot, ...patch, currentVersion: app.getVersion(), channel: settings.channel, releasesUrl: DEFAULT_RELEASES_URL, source: "github-releases" };
+    if (!this.window.isDestroyed() && !this.window.webContents.isDestroyed()) {
+      this.window.webContents.send(IPC.updateStatusChanged, this.getStatus());
+    }
   }
 }
 
-async function fetchRelease(channel: UpdateChannel): Promise<{
-  tagName: string;
-  name?: string;
-  notes?: string;
-  publishedAt?: string;
-  url: string;
-} | null> {
-  const repository = resolveRepository();
-  const response = await net.fetch(`https://api.github.com/repos/${repository}/releases?per_page=20`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": `UltraX-Browser/${app.getVersion()}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  });
-  if (!response.ok) throw new Error(`GitHub Releases returned HTTP ${response.status}.`);
-  const payload = await response.json() as unknown;
-  if (!Array.isArray(payload)) throw new Error("GitHub Releases returned an invalid response.");
-
-  for (const item of payload) {
-    if (!item || typeof item !== "object") continue;
-    const release = item as GitHubRelease;
-    if (release.draft === true || !matchesChannel(release, channel)) continue;
-    if (typeof release.tag_name !== "string" || typeof release.html_url !== "string") continue;
-    if (!/^v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(release.tag_name)) continue;
-    if (!release.html_url.startsWith(`https://github.com/${repository}/releases/`)) continue;
-    return {
-      tagName: release.tag_name,
-      name: optionalString(release.name),
-      notes: optionalString(release.body)?.slice(0, 6000),
-      publishedAt: optionalString(release.published_at),
-      url: release.html_url,
-    };
+function releaseNotesToText(value: UpdateInfo["releaseNotes"]): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") return stripHtml(value).slice(0, 6000);
+  if (Array.isArray(value)) {
+    return value.map((item) => `${item.version ? `Version ${item.version}` : "Release"}\n${stripHtml(item.note ?? "")}`).join("\n\n").slice(0, 6000);
   }
-  return null;
+  return undefined;
 }
 
-function matchesChannel(release: GitHubRelease, channel: UpdateChannel): boolean {
-  if (channel === "stable") return release.prerelease !== true;
-  const label = `${optionalString(release.tag_name) ?? ""} ${optionalString(release.name) ?? ""}`.toLowerCase();
-  return release.prerelease === true && label.includes(channel);
+function optionalString(value: string | null | undefined): string | undefined {
+  return value ?? undefined;
 }
 
-function resolveRepository(): string {
-  const repository = process.env.ULTRAX_GITHUB_REPOSITORY ?? ULTRAX_GITHUB_REPOSITORY;
-  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)
-    ? repository
-    : ULTRAX_GITHUB_REPOSITORY;
+function stripHtml(value: string): string {
+  return value.replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
 }
 
-function resolveReleasesUrl(): string {
-  return `https://github.com/${resolveRepository()}/releases`;
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function errorToMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Update check failed.";
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
 }
