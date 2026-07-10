@@ -1,6 +1,8 @@
 export const IPC = {
   browserState: "browser:state",
   focusAddressBar: "browser:focus-address-bar",
+  shortcutInvoked: "browser:shortcut-invoked",
+  findInPageResult: "browser:find-in-page-result",
   requestCloseConfirmation: "window:request-close-confirmation",
 
   getState: "browser:get-state",
@@ -25,6 +27,9 @@ export const IPC = {
   hardReload: "tabs:hard-reload",
   nextTab: "tabs:next",
   previousTab: "tabs:previous",
+  reopenClosedTab: "tabs:reopen-closed",
+  findInPage: "tabs:find-in-page",
+  stopFindInPage: "tabs:stop-find-in-page",
 
   toggleBookmark: "bookmarks:toggle-current",
   removeBookmark: "bookmarks:remove",
@@ -58,6 +63,8 @@ export const IPC = {
   removeNewTabCustomImage: "appearance:remove-new-tab-custom-image",
 
   clearBookmarks: "bookmarks:clear",
+  importBookmarks: "bookmarks:import",
+  exportBookmarks: "bookmarks:export",
 
   loadUnpackedExtension: "extensions:load-unpacked",
   validateUnpackedExtension: "extensions:validate-unpacked",

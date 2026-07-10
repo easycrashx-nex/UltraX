@@ -1,5 +1,26 @@
 # UltraX Browser Changelog
 
+## 1.1.6 - Browser Basics, Shortcuts, Find, and Bookmark Import
+
+### Added
+
+- Added editable, persisted browser shortcuts with conflict detection, safe reserved-key validation, per-action reset, and full reset.
+- Added `Ctrl+Shift+T` closed-tab restoration with an in-memory 25-tab history.
+- Added a native Chromium find-in-page bar with next/previous match navigation, match count, case sensitivity, and Escape handling.
+- Added Netscape bookmark HTML import with folder preservation, duplicate handling, unsafe URL rejection, size limits, import summaries, and HTML export.
+- Added middle-click tab closing without activating the target tab.
+
+### Fixed
+
+- Kept Google search functional when the unused custom search template is empty.
+- Added clear validation when Custom search is selected without a valid `{query}` or `%s` HTTP(S) template.
+- Unified shell and web-content shortcut handling through one typed shortcut registry.
+
+### Tests
+
+- Added unit coverage for shortcut normalization/conflicts and secure bookmark parsing/merging.
+- Added Electron E2E coverage for search validation, closed-tab restoration, middle-click close, find-in-page, shortcut editing, and bookmark import.
+
 ## 1.1.5 - Tab Context Menu Layering Patch
 
 ### Fixed

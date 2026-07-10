@@ -2,6 +2,8 @@ import type {
   AccentColor,
   AnimationLevel,
   BlurIntensity,
+  BookmarkDuplicatePolicy,
+  BookmarkImportSummary,
   BrowserSettings,
   CloseBehavior,
   CornerRadius,
@@ -53,6 +55,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
+  Upload,
   UserRound,
   X,
 } from "lucide-react";
@@ -60,6 +63,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ShortcutsSettings } from "./ShortcutsSettings";
 import type { PanelId, SettingsCategoryId } from "./types";
 
 type SettingsPageProps = {
@@ -80,6 +84,8 @@ type SettingsPageProps = {
   onClearNetworkCache: () => void;
   onClearDownloads: () => void;
   onClearBookmarks: () => void;
+  onImportBookmarks: (duplicatePolicy: BookmarkDuplicatePolicy) => Promise<BookmarkImportSummary | null>;
+  onExportBookmarks: () => Promise<string | null>;
   onChooseDownloadFolder: () => void;
   onOpenDownloadsFolder: () => void;
   onChooseNewTabCustomImage: () => Promise<string | null>;
@@ -167,6 +173,13 @@ const categoryGroups: CategoryGroup[] = [
       { id: "advanced", label: "Advanced", detail: "Developer tools", icon: <Code2 /> },
       { id: "updates", label: "Updates", detail: "Release channel", icon: <RefreshCw /> },
       { id: "about", label: "About UltraX", detail: "Version and engine", icon: <Info /> },
+    ],
+  },
+  {
+    label: "Library",
+    items: [
+      { id: "bookmarks", label: "Bookmarks", detail: "Saved pages and import", icon: <Bookmark /> },
+      { id: "history", label: "History", detail: "Visited pages", icon: <Clock /> },
     ],
   },
 ];
@@ -479,6 +492,8 @@ export function SettingsPage({
   onClearNetworkCache,
   onClearDownloads,
   onClearBookmarks,
+  onImportBookmarks,
+  onExportBookmarks,
   onChooseDownloadFolder,
   onOpenDownloadsFolder,
   onChooseNewTabCustomImage,
@@ -573,7 +588,7 @@ export function SettingsPage({
           <div className="min-w-0">
             <h1 className="truncate text-[15px] font-semibold">UltraX Settings</h1>
             <p className="truncate text-xs text-muted-foreground">
-              v1.1.5 tab-menu layering, overlay polish, privacy, security, accessibility, and permissions.
+              v1.1.6 shortcuts, find-in-page, closed-tab restore, and bookmark migration.
             </p>
           </div>
         </div>
@@ -682,6 +697,8 @@ export function SettingsPage({
               onClearNetworkCache={onClearNetworkCache}
               onClearDownloads={onClearDownloads}
               onClearBookmarks={onClearBookmarks}
+              onImportBookmarks={onImportBookmarks}
+              onExportBookmarks={onExportBookmarks}
               onChooseDownloadFolder={onChooseDownloadFolder}
               onOpenDownloadsFolder={onOpenDownloadsFolder}
               onChooseNewTabCustomImage={onChooseNewTabCustomImage}
@@ -738,6 +755,8 @@ function CategoryContent({
   onClearNetworkCache,
   onClearDownloads,
   onClearBookmarks,
+  onImportBookmarks,
+  onExportBookmarks,
   onChooseDownloadFolder,
   onOpenDownloadsFolder,
   onChooseNewTabCustomImage,
@@ -773,6 +792,9 @@ function CategoryContent({
   const [securityNotice, setSecurityNotice] = useState<string | null>(null);
   const [extensionNotice, setExtensionNotice] = useState<string | null>(null);
   const [updateNotice, setUpdateNotice] = useState<string | null>(null);
+  const [bookmarkNotice, setBookmarkNotice] = useState<string | null>(null);
+  const [bookmarkDuplicatePolicy, setBookmarkDuplicatePolicy] =
+    useState<BookmarkDuplicatePolicy>("skip");
   const [extensionTab, setExtensionTab] = useState<"installed" | "store" | "developer">("installed");
   const [selectedExtensionId, setSelectedExtensionId] = useState<string | null>(null);
   const [permissionHost, setPermissionHost] = useState("");
@@ -817,7 +839,7 @@ function CategoryContent({
     generatedAt: new Date().toISOString(),
     app: {
       name: runtimeInfo?.appName ?? "UltraX",
-      version: runtimeInfo?.appVersion ?? "1.1.5",
+      version: runtimeInfo?.appVersion ?? "1.1.6",
       electron: runtimeInfo?.electronVersion ?? "Unknown",
       chromium: runtimeInfo?.chromiumVersion ?? "Unknown",
       node: runtimeInfo?.nodeVersion ?? "Unknown",
@@ -1029,7 +1051,7 @@ function CategoryContent({
         JSON.stringify(
           {
             exportedAt: new Date().toISOString(),
-            appVersion: runtimeInfo?.appVersion ?? "1.1.5",
+            appVersion: runtimeInfo?.appVersion ?? "1.1.6",
             settings,
           },
           null,
@@ -1177,14 +1199,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset UltraX settings"
-              detail="Restore preferences to the v1.1.5 defaults."
+              detail="Restore preferences to the v1.1.6 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset all UltraX settings?",
-                  "This restores preferences to the v1.1.5 defaults.",
+                  "This restores preferences to the v1.1.6 defaults.",
                   "Reset",
                   onResetSettings,
                 )
@@ -1193,7 +1215,7 @@ function CategoryContent({
           </SettingSection>
           <StatusCard
             title="Release status"
-            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.5"} is running in ${
+            detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.6"} is running in ${
               runtimeInfo?.buildType ?? "development"
             } mode.`}
             icon={<Sparkles aria-hidden="true" />}
@@ -1930,14 +1952,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset security settings"
-              detail="Restores only security preferences to the v1.1.5 defaults."
+              detail="Restores only security preferences to the v1.1.6 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset security settings?",
-                  "Only Security page preferences will return to the v1.1.5 defaults.",
+                  "Only Security page preferences will return to the v1.1.6 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultSecuritySettings),
                 )
@@ -2060,7 +2082,7 @@ function CategoryContent({
             )}
           </SettingSection>
 
-          <SettingSection title="Runtime Coverage" detail="What is enforced in v1.1.5 and what stays under Chromium defaults.">
+          <SettingSection title="Runtime Coverage" detail="What is enforced in v1.1.6 and what stays under Chromium defaults.">
             <InfoRow label="Electron permission prompts" detail="Camera, microphone, location, notifications, and clipboard use UltraX Allow/Block prompts with optional remembering." />
             <InfoRow label="Downloads" detail="Download permission defaults are enforced before the file is saved." />
             <InfoRow label="Pop-ups" detail="Unsafe windows are denied. Safe window-open requests become UltraX tabs." />
@@ -2076,38 +2098,76 @@ function CategoryContent({
 
     case "bookmarks":
       return (
-        <SettingSection title="Bookmarks" detail="Manage saved pages and toolbar visibility.">
-          <SwitchRow
-            label="Show bookmarks bar"
-            detail="Display saved pages below the address controls."
-            checked={settings.showBookmarksBar}
-            onChange={(checked) => onUpdateSettings({ showBookmarksBar: checked })}
-          />
-          <ActionRow
-            label="Manage bookmarks"
-            detail="Open the bookmarks side panel."
-            actionLabel="Open"
-            icon={<Bookmark aria-hidden="true" />}
-            onAction={() => onOpenPanel("bookmarks")}
-          />
-          <ActionRow
-            label="Clear bookmarks"
-            detail="Remove all local bookmarks."
-            actionLabel="Clear"
-            icon={<Trash2 aria-hidden="true" />}
-            danger
-            onAction={() =>
-              requestConfirm(
-                "Clear all bookmarks?",
-                "This removes every local bookmark saved in UltraX.",
-                "Clear",
-                onClearBookmarks,
-              )
-            }
-          />
-          <ComingSoonRow label="Import bookmarks" detail="Planned for browser migration workflows." />
-          <ComingSoonRow label="Export bookmarks" detail="Planned for portable backup workflows." />
-        </SettingSection>
+        <>
+          <SettingSection title="Bookmarks" detail="Manage saved pages and toolbar visibility.">
+            <SwitchRow
+              label="Show bookmarks bar"
+              detail="Display saved pages below the address controls."
+              checked={settings.showBookmarksBar}
+              onChange={(checked) => onUpdateSettings({ showBookmarksBar: checked })}
+            />
+            <ActionRow
+              label="Manage bookmarks"
+              detail="Open the bookmarks side panel."
+              actionLabel="Open"
+              icon={<Bookmark aria-hidden="true" />}
+              onAction={() => onOpenPanel("bookmarks")}
+            />
+            <SelectRow
+              label="Import source"
+              detail="UltraX reads a local browser-exported bookmark file."
+              value="html"
+              onChange={() => undefined}
+              options={[["html", "Bookmarks HTML file"]]}
+            />
+            <SelectRow
+              label="Duplicate handling"
+              detail="Choose whether URLs already saved in UltraX are imported again."
+              value={bookmarkDuplicatePolicy}
+              onChange={(value) => setBookmarkDuplicatePolicy(value as BookmarkDuplicatePolicy)}
+              options={[["skip", "Skip duplicates"], ["keep", "Keep duplicates"]]}
+            />
+            <ActionRow
+              label="Import from HTML"
+              detail="Import a local Netscape bookmark file. Duplicate URLs are skipped."
+              actionLabel="Import Bookmarks"
+              icon={<Upload aria-hidden="true" />}
+              onAction={() => void onImportBookmarks(bookmarkDuplicatePolicy)
+                .then((summary) => {
+                  if (!summary) return;
+                  setBookmarkNotice(
+                    `Imported ${summary.imported}, skipped ${summary.skippedDuplicates} ${summary.skippedDuplicates === 1 ? "duplicate" : "duplicates"}, ${summary.failed} failed.`,
+                  );
+                })
+                .catch((error) => setBookmarkNotice(error instanceof Error ? error.message : "Bookmark import failed."))}
+            />
+            <ActionRow
+              label="Export to HTML"
+              detail="Create a portable HTML backup of local bookmarks."
+              actionLabel="Export Bookmarks"
+              icon={<Download aria-hidden="true" />}
+              onAction={() => void onExportBookmarks()
+                .then((filePath) => filePath && setBookmarkNotice(`Bookmarks exported to ${filePath}.`))
+                .catch((error) => setBookmarkNotice(error instanceof Error ? error.message : "Bookmark export failed."))}
+            />
+            <ActionRow
+              label="Clear bookmarks"
+              detail="Remove all local bookmarks."
+              actionLabel="Clear"
+              icon={<Trash2 aria-hidden="true" />}
+              danger
+              onAction={() =>
+                requestConfirm(
+                  "Clear all bookmarks?",
+                  "This removes every local bookmark saved in UltraX.",
+                  "Clear",
+                  onClearBookmarks,
+                )
+              }
+            />
+          </SettingSection>
+          {bookmarkNotice && <StatusCard title="Bookmark status" detail={bookmarkNotice} icon={<Bookmark aria-hidden="true" />} />}
+        </>
       );
 
     case "history":
@@ -2158,7 +2218,7 @@ function CategoryContent({
             <ComingSoonRow label="Add profile" detail="Separate profile storage is planned for v1.1." />
             <ComingSoonRow label="Guest mode" detail="Requires a separate temporary session partition." />
           </SettingSection>
-          <EmptyFeature title="Profiles are coming next" detail="v1.1.5 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
+          <EmptyFeature title="Profiles are coming next" detail="v1.1.6 keeps the Settings structure ready without adding speculative account logic." icon={<UserRound aria-hidden="true" />} />
         </>
       );
 
@@ -2184,7 +2244,7 @@ function CategoryContent({
             <InfoRow label="What extensions are" detail="Browser-level add-ons with scoped permissions for tabs, sidebar, and local browser features." />
             <ComingSoonRow label="Plugin marketplace" detail="Requires signed native module loading and a separate trust boundary." />
           </SettingSection>
-          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.1.5 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
+          <EmptyFeature title="Plugin system not enabled" detail="UltraX Browser v1.1.6 keeps Plugins separate while browser Extensions and updates mature." icon={<Puzzle aria-hidden="true" />} />
         </>
       );
 
@@ -2784,7 +2844,7 @@ function CategoryContent({
           )}
 
           <SettingSection title="Diagnostics" detail="Local performance information safe to copy or export.">
-            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.5"}`} />
+            <InfoRow label="App version" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.6"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -2822,14 +2882,14 @@ function CategoryContent({
             />
             <ActionRow
               label="Reset performance settings"
-              detail="Restores only this Performance page to v1.1.5 defaults."
+              detail="Restores only this Performance page to v1.1.6 defaults."
               actionLabel="Reset"
               icon={<RotateCcw aria-hidden="true" />}
               danger
               onAction={() =>
                 requestConfirm(
                   "Reset performance settings?",
-                  "Only the Performance page settings will return to the v1.1.5 defaults.",
+                  "Only the Performance page settings will return to the v1.1.6 defaults.",
                   "Reset",
                   () => onUpdateSettings(defaultPerformanceSettings),
                 )
@@ -2912,7 +2972,7 @@ function CategoryContent({
                 ["extra-large", "Extra Large"],
               ]}
             />
-            <InfoRow label="UI Scale" detail="Planned after responsive layout testing; Text Size is safe in v1.1.5." />
+            <InfoRow label="UI Scale" detail="Planned after responsive layout testing; Text Size is safe in v1.1.6." />
             <RangeRow
               label="Default page zoom"
               detail={`${Math.round(settings.pageZoom * 100)}% for web pages.`}
@@ -2971,23 +3031,7 @@ function CategoryContent({
       );
 
     case "shortcuts":
-      return (
-        <SettingSection title="Keyboard Shortcuts" detail="Active browser shortcuts in shell and web content.">
-          {[
-            ["Ctrl/Cmd + L", "Focus address bar"],
-            ["Ctrl/Cmd + T", "New tab"],
-            ["Ctrl/Cmd + W", "Close tab"],
-            ["Ctrl/Cmd + R", "Reload"],
-            ["Ctrl/Cmd + Shift + R", "Hard reload"],
-            ["Ctrl/Cmd + D", "Toggle bookmark"],
-            ["Alt + Left", "Back"],
-            ["Alt + Right", "Forward"],
-            ["Ctrl/Cmd + Tab", "Next tab"],
-          ].map(([keys, detail]) => (
-            <InfoRow key={keys} label={keys} detail={detail} />
-          ))}
-        </SettingSection>
-      );
+      return <ShortcutsSettings settings={settings} onUpdateSettings={onUpdateSettings} />;
 
     case "advanced":
       return (
@@ -3009,7 +3053,7 @@ function CategoryContent({
             onAction={() =>
               requestConfirm(
                 "Reset all UltraX settings?",
-                "This restores preferences to the v1.1.5 defaults.",
+                "This restores preferences to the v1.1.6 defaults.",
                 "Reset",
                 onResetSettings,
               )
@@ -3022,7 +3066,7 @@ function CategoryContent({
     case "updates": {
       const update = updateStatus ?? {
         status: "idle",
-        currentVersion: runtimeInfo?.appVersion ?? "1.1.5",
+        currentVersion: runtimeInfo?.appVersion ?? "1.1.6",
         channel: settings.updates.channel,
         updateAvailable: false,
         lastCheckedAt: settings.updates.lastCheckedAt,
@@ -3187,7 +3231,7 @@ function CategoryContent({
       return (
         <>
           <SettingSection title="About UltraX" detail="Build and engine information.">
-            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.5"}`} />
+            <InfoRow label="App" detail={`UltraX Browser ${runtimeInfo?.appVersion ?? "1.1.6"}`} />
             <InfoRow label="Electron" detail={runtimeInfo?.electronVersion ?? "Unknown"} />
             <InfoRow label="Chromium" detail={runtimeInfo?.chromiumVersion ?? "Unknown"} />
             <InfoRow label="Node" detail={runtimeInfo?.nodeVersion ?? "Unknown"} />
@@ -3202,8 +3246,8 @@ function CategoryContent({
             <InfoRow label="License" detail="Project-local MVP placeholder." />
           </SettingSection>
           <StatusCard
-            title="UltraX Browser v1.1.5"
-            detail="Polished overlay layering while keeping the expanded Settings, privacy, security, accessibility, permissions, and Google defaults."
+            title="UltraX Browser v1.1.6"
+            detail="Added customizable shortcuts, native find-in-page, closed-tab restore, middle-click close, and secure bookmark migration."
             icon={<Sparkles aria-hidden="true" />}
           />
         </>

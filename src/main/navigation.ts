@@ -68,12 +68,19 @@ export function normalizeNavigationInput(
     throw new Error("Address bar search is disabled.");
   }
 
-  if (settings.searchEngine === "custom" && settings.customSearchUrl.trim()) {
+  if (settings.searchEngine === "custom") {
+    if (!settings.customSearchUrl.trim()) {
+      throw new Error("Custom search template is empty. Add a URL containing {query} or %s in Settings.");
+    }
+
     const encodedQuery = encodeURIComponent(trimmed);
     const rawTemplate = settings.customSearchUrl.trim();
-    const rawUrl = rawTemplate.includes("{query}")
-      ? rawTemplate.replace("{query}", encodedQuery)
-      : `${rawTemplate}${rawTemplate.includes("?") ? "&" : "?"}q=${encodedQuery}`;
+    if (!rawTemplate.includes("{query}") && !rawTemplate.includes("%s")) {
+      throw new Error("Custom search template must contain {query} or %s.");
+    }
+    const rawUrl = rawTemplate
+      .replaceAll("{query}", encodedQuery)
+      .replaceAll("%s", encodedQuery);
 
     try {
       const parsed = new URL(rawUrl);
@@ -81,9 +88,13 @@ export function normalizeNavigationInput(
       if (isSafeWebUrl(parsed.toString())) {
         return { kind: "web", url: parsed.toString() };
       }
-    } catch {
-      // Fall through to the safe default engine when a custom template is invalid.
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Custom search template")) {
+        throw error;
+      }
     }
+
+    throw new Error("Custom search template must be a valid HTTP or HTTPS URL.");
   }
 
   const engineBaseUrl = SEARCH_URLS[settings.searchEngine] || SEARCH_URLS.google;

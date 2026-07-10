@@ -262,6 +262,48 @@ export type FocusRingVisibility = "subtle" | "standard" | "high";
 
 export type TextScale = "small" | "default" | "large" | "extra-large";
 
+export type ShortcutAction =
+  | "focusAddressBar"
+  | "newTab"
+  | "closeTab"
+  | "reopenClosedTab"
+  | "nextTab"
+  | "previousTab"
+  | "reload"
+  | "hardReload"
+  | "back"
+  | "forward"
+  | "toggleBookmark"
+  | "toggleBookmarksBar"
+  | "openHistory"
+  | "openDownloads"
+  | "findInPage"
+  | "openSettings"
+  | "clearBrowsingData";
+
+export type ShortcutOverrides = Partial<Record<ShortcutAction, string[]>>;
+
+export type FindInPageOptions = {
+  forward?: boolean;
+  findNext?: boolean;
+  matchCase?: boolean;
+};
+
+export type FindInPageResult = {
+  requestId: number;
+  activeMatchOrdinal: number;
+  matches: number;
+  finalUpdate: boolean;
+};
+
+export type BookmarkDuplicatePolicy = "skip" | "keep";
+
+export type BookmarkImportSummary = {
+  imported: number;
+  skippedDuplicates: number;
+  failed: number;
+};
+
 export type PrivacyClearTimeRange = "last-hour" | "last-24-hours" | "last-7-days" | "all-time";
 
 export type DownloadState =
@@ -304,6 +346,7 @@ export type Bookmark = {
   title: string;
   url: string;
   createdAt: number;
+  folderPath?: string[];
 };
 
 export type HistoryEntry = {
@@ -420,6 +463,7 @@ export type BrowserSettings = {
   readableFontSmoothing: boolean;
   pageZoom: number;
   tabHoverPreview: boolean;
+  shortcutOverrides: ShortcutOverrides;
 };
 
 export type RuntimeMemoryInfo = {

@@ -9,6 +9,7 @@ import {
   PinOff,
   Plus,
   RefreshCw,
+  RotateCcw,
   Square,
   Volume2,
   VolumeX,
@@ -33,6 +34,7 @@ type TabStripProps = {
   tabHoverPreviewEnabled: boolean;
   reducedMotion: boolean;
   onCreateTab: () => void;
+  onReopenClosedTab: () => void;
   onSwitchTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onDuplicateTab: (tabId: string) => void;
@@ -100,6 +102,7 @@ export function TabStrip({
   tabHoverPreviewEnabled,
   reducedMotion,
   onCreateTab,
+  onReopenClosedTab,
   onSwitchTab,
   onCloseTab,
   onDuplicateTab,
@@ -489,6 +492,13 @@ export function TabStrip({
         data-tab-id={tab.id}
         aria-grabbed={isDragPlaceholder}
         onPointerDown={(event) => startTabDrag(tab, event)}
+        onAuxClick={(event) => {
+          if (event.button !== 1) return;
+          event.preventDefault();
+          event.stopPropagation();
+          closePreview();
+          onCloseTab(tab.id);
+        }}
         onPointerEnter={(event) => {
           if (event.buttons !== 0) {
             closePreview();
@@ -666,6 +676,11 @@ export function TabStrip({
               icon={<Plus aria-hidden="true" />}
               label="New Tab"
               onClick={() => runMenuAction(onCreateTab)}
+            />
+            <TabMenuItem
+              icon={<RotateCcw aria-hidden="true" />}
+              label="Reopen Closed Tab"
+              onClick={() => runMenuAction(onReopenClosedTab)}
             />
             <TabMenuItem
               icon={<RefreshCw aria-hidden="true" />}

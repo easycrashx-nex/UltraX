@@ -11,12 +11,14 @@ import {
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { IPC } from "../shared/ipc";
+import { normalizeShortcutOverrides } from "../shared/shortcuts";
 import type {
   BrowserSettings,
   BrowserWindowBounds,
   BrowserWindowSession,
   ExtensionApiRequest,
   ExtensionRuntimeLogLevel,
+  FindInPageOptions,
   PermissionPolicy,
   RuntimeInfo,
   SitePermissionKey,
@@ -437,6 +439,16 @@ function registerIpcHandlers(): void {
   handle(IPC.hardReload, (record) => record.controller.reload(true));
   handle(IPC.nextTab, (record) => record.controller.nextTab());
   handle(IPC.previousTab, (record) => record.controller.previousTab());
+  handle(IPC.reopenClosedTab, (record) => record.controller.reopenClosedTab());
+  handle(IPC.findInPage, (record, _event, text, options) =>
+    record.controller.findInPage(
+      readString(text, "find text", 512),
+      readFindInPageOptions(options),
+    ),
+  );
+  handle(IPC.stopFindInPage, (record, _event, action) =>
+    record.controller.stopFindInPage(readStopFindAction(action)),
+  );
   handle(IPC.toggleBookmark, (record) => record.controller.toggleCurrentBookmark());
   handle(IPC.removeBookmark, (record, _event, bookmarkId) =>
     record.controller.removeBookmark(readString(bookmarkId, "bookmarkId", 128)),
@@ -501,6 +513,13 @@ function registerIpcHandlers(): void {
     syncSettingsToOtherWindows(record);
   });
   handle(IPC.clearBookmarks, (record) => record.controller.clearBookmarks());
+  handle(IPC.importBookmarks, async (record, _event, duplicatePolicy) => {
+    if (duplicatePolicy !== "skip" && duplicatePolicy !== "keep") {
+      throw new Error("Invalid bookmark duplicate policy.");
+    }
+    return record.controller.importBookmarks(duplicatePolicy);
+  });
+  handle(IPC.exportBookmarks, (record) => record.controller.exportBookmarks());
   handle(IPC.ensureExtensionsWorkspace, (record) => record.controller.ensureExtensionsWorkspace());
   handle(IPC.loadUnpackedExtension, async (record) => record.controller.loadUnpackedExtension());
   handle(IPC.validateUnpackedExtension, async (record) => record.controller.validateUnpackedExtension());
@@ -1368,7 +1387,40 @@ function readSettingsPatch(value: unknown): Partial<BrowserSettings> {
     patch.tabHoverPreview = readBoolean(candidate.tabHoverPreview, "tab hover preview setting");
   }
 
+  if (candidate.shortcutOverrides !== undefined) {
+    if (
+      !candidate.shortcutOverrides ||
+      typeof candidate.shortcutOverrides !== "object" ||
+      Array.isArray(candidate.shortcutOverrides)
+    ) {
+      throw new Error("Invalid shortcut overrides.");
+    }
+    patch.shortcutOverrides = normalizeShortcutOverrides(candidate.shortcutOverrides);
+  }
+
   return patch;
+}
+
+function readFindInPageOptions(value: unknown): FindInPageOptions {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Invalid find-in-page options.");
+  }
+  const candidate = value as Record<string, unknown>;
+  return {
+    forward: candidate.forward === undefined ? undefined : readBoolean(candidate.forward, "find direction"),
+    findNext: candidate.findNext === undefined ? undefined : readBoolean(candidate.findNext, "find next setting"),
+    matchCase: candidate.matchCase === undefined ? undefined : readBoolean(candidate.matchCase, "find match case setting"),
+  };
+}
+
+function readStopFindAction(
+  value: unknown,
+): "clearSelection" | "keepSelection" | "activateSelection" {
+  if (value === "clearSelection" || value === "keepSelection" || value === "activateSelection") {
+    return value;
+  }
+  throw new Error("Invalid stop-find action.");
 }
 
 function readBoolean(value: unknown, fieldName: string): boolean {

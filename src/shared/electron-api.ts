@@ -1,6 +1,8 @@
 import type {
   BrowserSettings,
   BrowserState,
+  BookmarkDuplicatePolicy,
+  BookmarkImportSummary,
   ExtensionApiRequest,
   ExtensionApiResponse,
   ExtensionPanelDescriptor,
@@ -9,6 +11,9 @@ import type {
   ExtensionValidationResult,
   ExtensionsWorkspaceInfo,
   InstalledExtension,
+  FindInPageOptions,
+  FindInPageResult,
+  ShortcutAction,
   TabReorderPlacement,
   RuntimeInfo,
   UpdateStatusSnapshot,
@@ -44,6 +49,9 @@ export type UltraXApi = {
   hardReload: () => Promise<void>;
   nextTab: () => Promise<void>;
   previousTab: () => Promise<void>;
+  reopenClosedTab: () => Promise<void>;
+  findInPage: (text: string, options?: FindInPageOptions) => Promise<number | null>;
+  stopFindInPage: (action?: "clearSelection" | "keepSelection" | "activateSelection") => Promise<void>;
 
   toggleBookmark: () => Promise<void>;
   removeBookmark: (bookmarkId: string) => Promise<void>;
@@ -85,6 +93,8 @@ export type UltraXApi = {
   removeNewTabCustomImage: () => Promise<void>;
 
   clearBookmarks: () => Promise<void>;
+  importBookmarks: (duplicatePolicy?: BookmarkDuplicatePolicy) => Promise<BookmarkImportSummary | null>;
+  exportBookmarks: () => Promise<string | null>;
 
   ensureExtensionsWorkspace: () => Promise<ExtensionsWorkspaceInfo>;
   loadUnpackedExtension: () => Promise<InstalledExtension | null>;
@@ -114,6 +124,8 @@ export type UltraXApi = {
 
   onStateChanged: (callback: (state: BrowserState) => void) => Unsubscribe;
   onFocusAddressBar: (callback: () => void) => Unsubscribe;
+  onShortcutInvoked: (callback: (action: ShortcutAction) => void) => Unsubscribe;
+  onFindInPageResult: (callback: (result: FindInPageResult) => void) => Unsubscribe;
   onCloseRequested: (callback: () => void) => Unsubscribe;
   onUpdateStatusChanged: (callback: (status: UpdateStatusSnapshot) => void) => Unsubscribe;
 };

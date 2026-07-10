@@ -3,6 +3,8 @@ import type { UltraXApi } from "../shared/electron-api";
 import type {
   BrowserSettings,
   BrowserState,
+  BookmarkDuplicatePolicy,
+  BookmarkImportSummary,
   ExtensionApiRequest,
   ExtensionApiResponse,
   ExtensionPanelDescriptor,
@@ -11,7 +13,10 @@ import type {
   ExtensionValidationResult,
   ExtensionsWorkspaceInfo,
   InstalledExtension,
+  FindInPageOptions,
+  FindInPageResult,
   RuntimeInfo,
+  ShortcutAction,
   TabReorderPlacement,
   UpdateStatusSnapshot,
   ViewInsets,
@@ -20,6 +25,8 @@ import type {
 const IPC = {
   browserState: "browser:state",
   focusAddressBar: "browser:focus-address-bar",
+  shortcutInvoked: "browser:shortcut-invoked",
+  findInPageResult: "browser:find-in-page-result",
   requestCloseConfirmation: "window:request-close-confirmation",
   getState: "browser:get-state",
   setViewInsets: "browser:set-view-insets",
@@ -42,6 +49,9 @@ const IPC = {
   hardReload: "tabs:hard-reload",
   nextTab: "tabs:next",
   previousTab: "tabs:previous",
+  reopenClosedTab: "tabs:reopen-closed",
+  findInPage: "tabs:find-in-page",
+  stopFindInPage: "tabs:stop-find-in-page",
   toggleBookmark: "bookmarks:toggle-current",
   removeBookmark: "bookmarks:remove",
   openBookmark: "bookmarks:open",
@@ -68,6 +78,8 @@ const IPC = {
   chooseNewTabCustomImage: "appearance:choose-new-tab-custom-image",
   removeNewTabCustomImage: "appearance:remove-new-tab-custom-image",
   clearBookmarks: "bookmarks:clear",
+  importBookmarks: "bookmarks:import",
+  exportBookmarks: "bookmarks:export",
   loadUnpackedExtension: "extensions:load-unpacked",
   validateUnpackedExtension: "extensions:validate-unpacked",
   ensureExtensionsWorkspace: "extensions:ensure-workspace",
@@ -114,6 +126,10 @@ const api: UltraXApi = {
   hardReload: () => invoke<void>(IPC.hardReload),
   nextTab: () => invoke<void>(IPC.nextTab),
   previousTab: () => invoke<void>(IPC.previousTab),
+  reopenClosedTab: () => invoke<void>(IPC.reopenClosedTab),
+  findInPage: (text: string, options?: FindInPageOptions) =>
+    invoke<number | null>(IPC.findInPage, text, options),
+  stopFindInPage: (action = "clearSelection") => invoke<void>(IPC.stopFindInPage, action),
 
   toggleBookmark: () => invoke<void>(IPC.toggleBookmark),
   removeBookmark: (bookmarkId: string) => invoke<void>(IPC.removeBookmark, bookmarkId),
@@ -160,6 +176,9 @@ const api: UltraXApi = {
   removeNewTabCustomImage: () => invoke<void>(IPC.removeNewTabCustomImage),
 
   clearBookmarks: () => invoke<void>(IPC.clearBookmarks),
+  importBookmarks: (duplicatePolicy: BookmarkDuplicatePolicy = "skip") =>
+    invoke<BookmarkImportSummary | null>(IPC.importBookmarks, duplicatePolicy),
+  exportBookmarks: () => invoke<string | null>(IPC.exportBookmarks),
 
   ensureExtensionsWorkspace: () =>
     invoke<ExtensionsWorkspaceInfo>(IPC.ensureExtensionsWorkspace),
@@ -206,6 +225,18 @@ const api: UltraXApi = {
 
     ipcRenderer.on(IPC.focusAddressBar, listener);
     return () => ipcRenderer.removeListener(IPC.focusAddressBar, listener);
+  },
+
+  onShortcutInvoked: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, action: ShortcutAction) => callback(action);
+    ipcRenderer.on(IPC.shortcutInvoked, listener);
+    return () => ipcRenderer.removeListener(IPC.shortcutInvoked, listener);
+  },
+
+  onFindInPageResult: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, result: FindInPageResult) => callback(result);
+    ipcRenderer.on(IPC.findInPageResult, listener);
+    return () => ipcRenderer.removeListener(IPC.findInPageResult, listener);
   },
 
   onCloseRequested: (callback) => {

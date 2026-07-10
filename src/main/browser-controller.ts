@@ -18,6 +18,8 @@ import path from "node:path";
 import { IPC } from "../shared/ipc";
 import type {
   Bookmark,
+  BookmarkDuplicatePolicy,
+  BookmarkImportSummary,
   BrowserSettings,
   BrowserState,
   BrowserTab,
@@ -32,10 +34,13 @@ import type {
   ExtensionsWorkspaceInfo,
   HistoryEntry,
   InstalledExtension,
+  FindInPageOptions,
+  ShortcutAction,
   TabReorderPlacement,
   UltraXExtensionPermission,
   ViewInsets,
 } from "../shared/types";
+import { resolveShortcutAction } from "../shared/shortcuts";
 import {
   getHostnameLabel,
   INTERNAL_NEW_TAB_URL,
@@ -48,10 +53,17 @@ import { LocalExtensionStoreProvider } from "./extension-store";
 import { ensureExtensionsWorkspace as ensureExtensionsWorkspaceDirectory } from "./extension-workspace";
 import { pushExtensionError, readLocalExtension, validateExtensionManifest } from "./extensions";
 import { DEFAULT_SETTINGS, StorageService } from "./storage";
+import {
+  exportBookmarksHtml,
+  mergeBookmarkCandidates,
+  parseBookmarkHtml,
+} from "./bookmark-import";
 
 const CHROME_HEIGHT = 108;
 const MAX_HISTORY_ENTRIES = 1000;
 const MAX_DOWNLOADS = 50;
+const MAX_CLOSED_TABS = 25;
+const MAX_BOOKMARK_IMPORT_BYTES = 5 * 1024 * 1024;
 const DANGEROUS_DOWNLOAD_EXTENSIONS = new Set([
   ".exe",
   ".msi",
@@ -80,6 +92,9 @@ export class BrowserController {
   private readonly onWindowBoundsChanged = () => this.layoutActiveView();
   private readonly windowId: string;
   private readonly initialSession?: BrowserWindowSession;
+  private readonly closedTabs: Array<{ tab: BrowserTab; index: number }> = [];
+  private pendingFindRequest: { tabId: string; text: string; options: FindInPageOptions } | null = null;
+  private generatedReplacementTabId: string | null = null;
 
   constructor(
     private readonly window: BrowserWindow,
@@ -115,6 +130,14 @@ export class BrowserController {
     this.window.off("maximize", this.onWindowBoundsChanged);
     this.window.off("unmaximize", this.onWindowBoundsChanged);
     this.browserSession.off("will-download", this.onDownloadStarted);
+    for (const view of this.views.values()) {
+      this.detachView(view);
+      if (!view.webContents.isDestroyed()) {
+        view.webContents.close({ waitForBeforeUnload: false });
+      }
+    }
+    this.views.clear();
+    this.attachedView = null;
   }
 
   getState(): BrowserState {
@@ -165,6 +188,8 @@ export class BrowserController {
     }
 
     const [tab] = this.state.tabs.splice(index, 1);
+    this.closedTabs.push({ tab: structuredClone(tab), index });
+    if (this.closedTabs.length > MAX_CLOSED_TABS) this.closedTabs.shift();
     const view = this.views.get(tab.id);
     if (view) {
       this.detachView(view);
@@ -173,7 +198,7 @@ export class BrowserController {
     }
 
     if (this.state.tabs.length === 0) {
-      this.createTab(undefined, true);
+      this.generatedReplacementTabId = this.createTab(undefined, true).id;
       return;
     }
 
@@ -183,6 +208,37 @@ export class BrowserController {
       this.attachActiveView();
     }
 
+    this.persistAndEmit();
+  }
+
+  reopenClosedTab(): void {
+    const closed = this.closedTabs.pop();
+    if (!closed) return;
+
+    if (
+      this.state.tabs.length === 1 &&
+      this.state.tabs[0].id === this.generatedReplacementTabId
+    ) {
+      this.state.tabs = [];
+    }
+    this.generatedReplacementTabId = null;
+
+    const restored = this.createTabRecordFromSnapshot(closed.tab);
+    restored.id = randomUUID();
+    const pinnedCount = this.getPinnedTabCount();
+    const insertIndex = restored.isPinned
+      ? Math.min(closed.index, pinnedCount)
+      : Math.max(pinnedCount, Math.min(closed.index, this.state.tabs.length));
+    this.state.tabs.splice(insertIndex, 0, restored);
+
+    if (!restored.isNewTab) {
+      const view = this.createWebView(restored.id);
+      this.views.set(restored.id, view);
+      void this.safeLoad(restored.id, restored.url);
+    }
+
+    this.state.activeTabId = restored.id;
+    this.attachActiveView();
     this.persistAndEmit();
   }
 
@@ -356,6 +412,9 @@ export class BrowserController {
     if (!activeTab) {
       return;
     }
+    if (activeTab.id === this.generatedReplacementTabId) {
+      this.generatedReplacementTabId = null;
+    }
 
     let target;
     try {
@@ -480,6 +539,46 @@ export class BrowserController {
   clearHistory(): void {
     this.state.history = [];
     this.persistAndEmit();
+  }
+
+  async importBookmarks(
+    duplicatePolicy: BookmarkDuplicatePolicy = "skip",
+  ): Promise<BookmarkImportSummary | null> {
+    const result = await dialog.showOpenDialog(this.window, {
+      title: "Import bookmarks",
+      buttonLabel: "Import",
+      properties: ["openFile"],
+      filters: [{ name: "Bookmark HTML", extensions: ["html", "htm"] }],
+    });
+    const filePath = result.filePaths[0];
+    if (result.canceled || !filePath) return null;
+
+    const stats = await fs.promises.stat(filePath);
+    if (!stats.isFile() || stats.size > MAX_BOOKMARK_IMPORT_BYTES) {
+      throw new Error("Bookmark file must be a local HTML file no larger than 5 MB.");
+    }
+
+    const parsed = parseBookmarkHtml(await fs.promises.readFile(filePath, "utf8"));
+    const merged = mergeBookmarkCandidates(this.state.bookmarks, parsed, duplicatePolicy);
+    this.state.bookmarks = merged.bookmarks;
+    this.persistAndEmit();
+    return merged.summary;
+  }
+
+  async exportBookmarks(): Promise<string | null> {
+    const result = await dialog.showSaveDialog(this.window, {
+      title: "Export bookmarks",
+      buttonLabel: "Export",
+      defaultPath: "UltraX-bookmarks.html",
+      filters: [{ name: "Bookmark HTML", extensions: ["html"] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    await fs.promises.writeFile(
+      result.filePath,
+      exportBookmarksHtml(this.state.bookmarks),
+      "utf8",
+    );
+    return result.filePath;
   }
 
   updateSettings(partial: Partial<BrowserSettings>): void {
@@ -921,6 +1020,60 @@ export class BrowserController {
     this.window.webContents.send(IPC.focusAddressBar);
   }
 
+  findInPage(text: string, options: FindInPageOptions = {}): number | null {
+    const view = this.getActiveView();
+    const activeTab = this.getActiveTab();
+    const query = text.trim();
+    if (!view || !activeTab || !query) {
+      this.pendingFindRequest = null;
+      view?.webContents.stopFindInPage("clearSelection");
+      return null;
+    }
+
+    if (view.webContents.isLoadingMainFrame()) {
+      this.pendingFindRequest = { tabId: activeTab.id, text: query, options };
+      return null;
+    }
+
+    this.pendingFindRequest = null;
+    // Electron names this option counterintuitively: true starts a new find session.
+    return view.webContents.findInPage(query, {
+      forward: options.forward ?? true,
+      findNext: options.findNext ?? false,
+      matchCase: options.matchCase ?? false,
+    });
+  }
+
+  stopFindInPage(
+    action: "clearSelection" | "keepSelection" | "activateSelection" = "clearSelection",
+  ): void {
+    this.pendingFindRequest = null;
+    this.getActiveView()?.webContents.stopFindInPage(action);
+  }
+
+  private executeShortcut(action: ShortcutAction): void {
+    const activeTab = this.getActiveTab();
+    switch (action) {
+      case "focusAddressBar": this.focusAddressBar(); return;
+      case "newTab": this.createTab(undefined, true); return;
+      case "closeTab": if (activeTab) this.closeTab(activeTab.id); return;
+      case "reopenClosedTab": this.reopenClosedTab(); return;
+      case "nextTab": this.nextTab(); return;
+      case "previousTab": this.previousTab(); return;
+      case "reload": this.reload(false); return;
+      case "hardReload": this.reload(true); return;
+      case "back": this.goBack(); return;
+      case "forward": this.goForward(); return;
+      case "toggleBookmark": this.toggleCurrentBookmark(); return;
+      case "toggleBookmarksBar":
+        this.updateSettings({ showBookmarksBar: !this.state.settings.showBookmarksBar });
+        return;
+      default:
+        this.window.webContents.focus();
+        this.window.webContents.send(IPC.shortcutInvoked, action);
+    }
+  }
+
   private restoreTabs(): void {
     this.applyRetentionPolicies();
 
@@ -1076,62 +1229,14 @@ export class BrowserController {
         return;
       }
 
-      const key = input.key.toLowerCase();
-      const hasPrimaryModifier = input.control || input.meta;
+      const action = resolveShortcutAction(input, this.state.settings.shortcutOverrides);
+      if (!action) return;
+      event.preventDefault();
+      this.executeShortcut(action);
+    });
 
-      if (hasPrimaryModifier && key === "l") {
-        event.preventDefault();
-        this.focusAddressBar();
-        return;
-      }
-
-      if (hasPrimaryModifier && key === "t") {
-        event.preventDefault();
-        this.createTab(undefined, true);
-        return;
-      }
-
-      if (hasPrimaryModifier && key === "w") {
-        event.preventDefault();
-        const activeTab = this.getActiveTab();
-        if (activeTab) {
-          this.closeTab(activeTab.id);
-        }
-        return;
-      }
-
-      if (hasPrimaryModifier && key === "r") {
-        event.preventDefault();
-        this.reload(input.shift);
-        return;
-      }
-
-      if (hasPrimaryModifier && key === "d") {
-        event.preventDefault();
-        this.toggleCurrentBookmark();
-        return;
-      }
-
-      if (hasPrimaryModifier && key === "tab") {
-        event.preventDefault();
-        if (input.shift) {
-          this.previousTab();
-        } else {
-          this.nextTab();
-        }
-        return;
-      }
-
-      if (input.alt && key === "arrowleft") {
-        event.preventDefault();
-        this.goBack();
-        return;
-      }
-
-      if (input.alt && key === "arrowright") {
-        event.preventDefault();
-        this.goForward();
-      }
+    view.webContents.on("found-in-page", (_event, result) => {
+      this.window.webContents.send(IPC.findInPageResult, result);
     });
 
     view.webContents.on("did-start-loading", () => {
@@ -1140,6 +1245,17 @@ export class BrowserController {
 
     view.webContents.on("did-stop-loading", () => {
       this.patchTabFromContents(tabId, view.webContents, { isLoading: false });
+    });
+
+    view.webContents.on("did-finish-load", () => {
+      const pending = this.pendingFindRequest;
+      if (!pending || pending.tabId !== tabId) return;
+      this.pendingFindRequest = null;
+      view.webContents.findInPage(pending.text, {
+        forward: pending.options.forward ?? true,
+        findNext: pending.options.findNext ?? true,
+        matchCase: pending.options.matchCase ?? false,
+      });
     });
 
     view.webContents.on("page-title-updated", (event, title) => {

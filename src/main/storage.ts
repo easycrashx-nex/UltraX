@@ -34,9 +34,10 @@ import type {
   ThemeMode,
   UpdateChannel,
 } from "../shared/types";
+import { normalizeShortcutOverrides } from "../shared/shortcuts";
 import { ensureBuiltInExtensions } from "./extensions";
 
-const STORAGE_VERSION = 7;
+const STORAGE_VERSION = 8;
 
 type StoredPayload = {
   version: number;
@@ -182,6 +183,7 @@ export const DEFAULT_SETTINGS: BrowserSettings = {
   readableFontSmoothing: true,
   pageZoom: 1,
   tabHoverPreview: true,
+  shortcutOverrides: {},
 };
 
 export function createDefaultState(): BrowserState {
@@ -693,6 +695,7 @@ function normalizeSettings(settings?: Partial<BrowserSettings>): BrowserSettings
         ? Math.max(0.67, Math.min(1.5, Number(settings.pageZoom)))
         : DEFAULT_SETTINGS.pageZoom,
     tabHoverPreview: boolValue(settings?.tabHoverPreview, DEFAULT_SETTINGS.tabHoverPreview),
+    shortcutOverrides: normalizeShortcutOverrides(settings?.shortcutOverrides),
   };
 }
 

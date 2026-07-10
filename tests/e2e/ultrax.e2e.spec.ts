@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { _electron as electron, type ElectronApplication } from "playwright";
 import fs from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
@@ -15,6 +16,11 @@ type ElementBox = {
   y: number;
   width: number;
   height: number;
+};
+
+type TestPageServer = {
+  url: string;
+  close: () => Promise<void>;
 };
 
 async function launchUltraX(userDataDir?: string): Promise<UltraXTestApp> {
@@ -32,22 +38,70 @@ async function launchUltraX(userDataDir?: string): Promise<UltraXTestApp> {
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
   await page.waitForFunction(() => Boolean((window as Window & { ultraX?: unknown }).ultraX));
+  await expect.poll(async () => {
+    const state = await page.evaluate(() => (window as any).ultraX.getState());
+    return state.tabs.length > 0 && Boolean(state.activeTabId);
+  }).toBe(true);
   return { app, page, userDataDir: resolvedUserDataDir };
 }
 
 async function closeUltraX({ app, userDataDir }: UltraXTestApp, removeUserData = true): Promise<void> {
   const childProcess = app.process();
   try {
-    await app.close();
+    const exited = new Promise<void>((resolve) => {
+      if (childProcess.exitCode !== null) {
+        resolve();
+        return;
+      }
+      const killTimer = setTimeout(() => childProcess.kill(), 5_000);
+      childProcess.once("exit", () => {
+        clearTimeout(killTimer);
+        resolve();
+      });
+    });
+    await app.evaluate(({ BrowserWindow }) => {
+      setTimeout(() => {
+        for (const window of BrowserWindow.getAllWindows()) window.destroy();
+      }, 0);
+    });
+    await exited;
   } catch {
-    if (!childProcess.killed && childProcess.exitCode === null) {
-      childProcess.kill();
-    }
+    if (!childProcess.killed && childProcess.exitCode === null) childProcess.kill();
   }
 
   if (removeUserData) {
     await removeUserDataDirectory(userDataDir);
   }
+}
+
+async function startTestPageServer(html: string): Promise<TestPageServer> {
+  const server: Server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(html);
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("Test page server did not expose a TCP port.");
+  }
+
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+        server.closeAllConnections();
+      }),
+  };
 }
 
 function delay(ms: number): Promise<void> {
@@ -72,10 +126,7 @@ async function getState(page: Page): Promise<any> {
 }
 
 async function waitForTabCount(page: Page, count: number): Promise<void> {
-  await page.waitForFunction(
-    (expected) => (window as any).ultraX.getState().then((state: any) => state.tabs.length === expected),
-    count,
-  );
+  await expect.poll(async () => (await getState(page)).tabs.length).toBe(count);
 }
 
 async function readVisibleTabBox(page: Page, tabId: string): Promise<ElementBox | null> {
@@ -281,6 +332,9 @@ test("settings persist across an app restart", async () => {
           updatedAt: Date.now(),
         },
       ],
+      shortcutOverrides: {
+        newTab: ["Ctrl+Shift+N"],
+      },
     }),
   );
   await expect.poll(async () => (await getState(firstRun.page)).settings.toolbarDensity).toBe("compact");
@@ -299,12 +353,13 @@ test("settings persist across an app restart", async () => {
     expect(state.settings.textScale).toBe("extra-large");
     expect(state.settings.permissionPolicy.notifications).toBe("ask");
     expect(state.settings.sitePermissionExceptions[0].host).toBe("example.com");
+    expect(state.settings.shortcutOverrides.newTab).toEqual(["Ctrl+Shift+N"]);
   } finally {
     await closeUltraX(secondRun);
   }
 });
 
-test("fresh settings use v1.1.5 search, suggestions, home, and permission defaults", async () => {
+test("fresh settings use v1.1.6 search, suggestions, home, and permission defaults", async () => {
   const app = await launchUltraX();
 
   try {
@@ -325,6 +380,192 @@ test("fresh settings use v1.1.5 search, suggestions, home, and permission defaul
     expect(state.settings.permissionPolicy.camera).toBe("ask");
     expect(state.settings.permissionPolicy.popups).toBe("block");
     expect(state.settings.tabHoverPreview).toBe(true);
+    expect(state.settings.shortcutOverrides).toEqual({});
+  } finally {
+    await closeUltraX(app);
+  }
+});
+
+test("Google search works with an empty custom template and Custom reports validation", async () => {
+  const app = await launchUltraX();
+
+  try {
+    await app.page.evaluate(() =>
+      (window as any).ultraX.updateSettings({
+        searchEngine: "google",
+        customSearchUrl: "",
+      }),
+    );
+    await app.page.evaluate(() => (window as any).ultraX.navigate("test"));
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.url;
+    }).toBe("https://www.google.com/search?q=test");
+
+    await app.page.evaluate(() =>
+      (window as any).ultraX.updateSettings({
+        searchEngine: "custom",
+        customSearchUrl: "",
+      }),
+    );
+    await app.page.evaluate(() => (window as any).ultraX.navigate("custom query"));
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.error;
+    }).toContain("Custom search template");
+  } finally {
+    await closeUltraX(app);
+  }
+});
+
+test("Ctrl+Shift+T reopens the most recently closed page", async () => {
+  const server = await startTestPageServer("<!doctype html><title>Restorable Page</title><p>restore me</p>");
+  const app = await launchUltraX();
+
+  try {
+    await app.page.evaluate((url) => (window as any).ultraX.navigate(url), server.url);
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.url;
+    }).toBe(`${server.url}/`);
+
+    const beforeClose = await getState(app.page);
+    await app.page.evaluate((tabId) => (window as any).ultraX.closeTab(tabId), beforeClose.activeTabId);
+    await app.page.keyboard.press("Control+Shift+T");
+
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.url;
+    }).toBe(`${server.url}/`);
+
+    await app.page.evaluate(() => (window as any).ultraX.createTab());
+    const withNewTab = await getState(app.page);
+    const existingNewTab = withNewTab.tabs.find((tab: any) => tab.isNewTab);
+    const restoredPage = withNewTab.tabs.find((tab: any) => tab.url === `${server.url}/`);
+    await app.page.evaluate((tabId) => (window as any).ultraX.closeTab(tabId), restoredPage.id);
+    await app.page.keyboard.press("Control+Shift+T");
+    await waitForTabCount(app.page, 2);
+    const afterSecondRestore = await getState(app.page);
+    expect(afterSecondRestore.tabs.some((tab: any) => tab.id === existingNewTab.id)).toBe(true);
+  } finally {
+    await closeUltraX(app);
+    await server.close();
+  }
+});
+
+test("middle-click closes the hovered inactive tab only", async () => {
+  const app = await launchUltraX();
+
+  try {
+    await app.page.getByTestId("new-tab-button").click();
+    await app.page.getByTestId("new-tab-button").click();
+    await waitForTabCount(app.page, 3);
+
+    const state = await getState(app.page);
+    const [firstTab, , thirdTab] = state.tabs;
+    await app.page.evaluate((tabId) => (window as any).ultraX.switchTab(tabId), firstTab.id);
+    await app.page.locator(`[data-tab-id="${thirdTab.id}"]`).click({ button: "middle" });
+
+    await waitForTabCount(app.page, 2);
+    const after = await getState(app.page);
+    expect(after.activeTabId).toBe(firstTab.id);
+    expect(after.tabs.some((tab: any) => tab.id === thirdTab.id)).toBe(false);
+  } finally {
+    await closeUltraX(app);
+  }
+});
+
+test("Ctrl+F opens a working find bar for web content", async () => {
+  const server = await startTestPageServer(
+    "<!doctype html><title>Find Page</title><main>UltraX needle and another needle.</main>",
+  );
+  const app = await launchUltraX();
+
+  try {
+    await app.page.evaluate((url) => (window as any).ultraX.navigate(url), server.url);
+    await expect.poll(async () => {
+      const state = await getState(app.page);
+      return state.tabs.find((tab: any) => tab.id === state.activeTabId)?.isNewTab;
+    }).toBe(false);
+
+    await app.page.keyboard.press("Control+F");
+    const findBar = app.page.getByTestId("find-bar");
+    await expect(findBar).toBeVisible();
+    await findBar.getByRole("textbox", { name: "Find in page" }).fill("needle");
+    await expect(findBar.getByText("1 / 2")).toBeVisible();
+
+    await findBar.getByRole("button", { name: "Next match" }).click();
+    await expect(findBar.getByText("2 / 2")).toBeVisible();
+    await app.page.keyboard.press("Escape");
+    await expect(findBar).toBeHidden();
+  } finally {
+    await closeUltraX(app);
+    await server.close();
+  }
+});
+
+test("shortcut editor detects conflicts and can replace or reset bindings", async () => {
+  const app = await launchUltraX();
+
+  try {
+    await app.page.locator('[data-quick-settings-trigger="true"]').click();
+    await app.page.getByRole("button", { name: "Open Settings" }).click();
+    await app.page.getByTestId("settings-category-shortcuts").click();
+
+    await app.page.getByTestId("shortcut-edit-newTab").click();
+    await app.page.keyboard.press("Control+W");
+
+    const conflict = app.page.getByRole("dialog", { name: "Shortcut conflict" });
+    await expect(conflict).toContainText("Close Tab");
+    await conflict.getByRole("button", { name: "Replace" }).click();
+
+    await expect.poll(async () => (await getState(app.page)).settings.shortcutOverrides.newTab)
+      .toEqual(["Ctrl+W"]);
+    await app.page.getByRole("button", { name: "Reset all shortcuts" }).click();
+    await expect.poll(async () => (await getState(app.page)).settings.shortcutOverrides)
+      .toEqual({});
+  } finally {
+    await closeUltraX(app);
+  }
+});
+
+test("bookmark HTML import preserves folders and reports duplicates", async () => {
+  const app = await launchUltraX();
+  const htmlPath = path.join(app.userDataDir, "bookmarks.html");
+  await fs.writeFile(
+    htmlPath,
+    `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+     <DL><p>
+       <DT><A HREF="https://example.com/">Example</A>
+       <DT><H3>Work</H3>
+       <DL><p>
+         <DT><A HREF="https://docs.example.com/">Docs</A>
+         <DT><A HREF="https://example.com/">Duplicate Example</A>
+         <DT><A HREF="javascript:alert(1)">Unsafe</A>
+       </DL><p>
+     </DL><p>`,
+    "utf8",
+  );
+
+  try {
+    await app.app.evaluate(({ dialog }, selectedPath) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [selectedPath],
+        bookmarks: [],
+      });
+    }, htmlPath);
+
+    await app.page.locator('[data-quick-settings-trigger="true"]').click();
+    await app.page.getByRole("button", { name: "Open Settings" }).click();
+    await app.page.getByTestId("settings-category-bookmarks").click();
+    await app.page.getByRole("button", { name: "Import Bookmarks" }).click();
+
+    await expect(app.page.getByText("Imported 2, skipped 1 duplicate, 1 failed.")).toBeVisible();
+    const state = await getState(app.page);
+    expect(state.bookmarks).toHaveLength(2);
+    expect(state.bookmarks.find((bookmark: any) => bookmark.url === "https://docs.example.com/")?.folderPath)
+      .toEqual(["Work"]);
   } finally {
     await closeUltraX(app);
   }
@@ -402,6 +643,7 @@ test("tab context menu renders above the address bar", async () => {
 
     expect(layering.overlapsAddressBar).toBe(true);
     expect(layering.contextMenuIsTopmost).toBe(true);
+    await expect(menu.getByRole("menuitem", { name: "Reopen Closed Tab" })).toBeVisible();
 
     await menu.getByRole("menuitem", { name: "Duplicate" }).click();
     await waitForTabCount(app.page, 2);
@@ -445,7 +687,7 @@ test("updates page opens and renders current version controls", async () => {
     await app.page.getByTestId("settings-category-updates").click();
 
     await expect(app.page.getByText("Current version")).toBeVisible();
-    await expect(app.page.getByText(/UltraX Browser 1\.1\.5/)).toBeVisible();
+    await expect(app.page.getByText(/UltraX Browser 1\.1\.6/)).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Check for Updates" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Download Update" })).toBeVisible();
     await expect(app.page.getByRole("button", { name: "Install and Restart" })).toBeVisible();

@@ -6,13 +6,16 @@ import type {
   ExtensionRuntimeLogLevel,
   ExtensionStoreItem,
   RuntimeInfo,
+  ShortcutAction,
   UpdateStatusSnapshot,
 } from "@shared/types";
+import { resolveShortcutAction } from "@shared/shortcuts";
 import { AlertTriangle, RotateCw, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { getAddressValue } from "@/lib/browser";
 import { DownloadShelf } from "./DownloadShelf";
+import { FindBar } from "./FindBar";
 import { NewTabPage } from "./NewTabPage";
 import { QuickSettings } from "./QuickSettings";
 import { SettingsPage } from "./SettingsPage";
@@ -36,6 +39,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
   const [extensionStoreItems, setExtensionStoreItems] = useState<ExtensionStoreItem[]>([]);
   const [extensionPanel, setExtensionPanel] = useState<ExtensionPanelDescriptor | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
   const [restoreTabsNextClose, setRestoreTabsNextClose] = useState(
     state.settings.closeBehavior !== "close-and-discard-session",
   );
@@ -45,6 +49,43 @@ export function BrowserShell({ state }: BrowserShellProps) {
   );
   const [addressValue, setAddressValue] = useState(getAddressValue(activeTab));
   const addressInputRef = useRef<HTMLInputElement>(null);
+
+  const invokeShortcut = useCallback((action: ShortcutAction) => {
+    switch (action) {
+      case "focusAddressBar":
+        addressInputRef.current?.focus();
+        addressInputRef.current?.select();
+        return;
+      case "newTab": void window.ultraX.createTab(); return;
+      case "closeTab": if (activeTab) void window.ultraX.closeTab(activeTab.id); return;
+      case "reopenClosedTab": void window.ultraX.reopenClosedTab(); return;
+      case "nextTab": void window.ultraX.nextTab(); return;
+      case "previousTab": void window.ultraX.previousTab(); return;
+      case "reload": void window.ultraX.reload(); return;
+      case "hardReload": void window.ultraX.hardReload(); return;
+      case "back": void window.ultraX.goBack(); return;
+      case "forward": void window.ultraX.goForward(); return;
+      case "toggleBookmark": void window.ultraX.toggleBookmark(); return;
+      case "toggleBookmarksBar":
+        void window.ultraX.updateSettings({ showBookmarksBar: !state.settings.showBookmarksBar });
+        return;
+      case "findInPage": setFindOpen(true); return;
+      case "openHistory":
+      case "openDownloads":
+        setSettingsOpen(false);
+        setQuickSettingsOpen(false);
+        setExtensionPanel(null);
+        setActivePanel(action === "openHistory" ? "history" : "downloads");
+        return;
+      case "openSettings":
+      case "clearBrowsingData":
+        setActivePanel(null);
+        setExtensionPanel(null);
+        setQuickSettingsOpen(false);
+        setSettingsCategory(action === "clearBrowsingData" ? "privacy" : "general");
+        setSettingsOpen(true);
+    }
+  }, [activeTab, state.settings.showBookmarksBar]);
 
   useEffect(() => {
     setAddressValue(getAddressValue(activeTab));
@@ -78,91 +119,45 @@ export function BrowserShell({ state }: BrowserShellProps) {
   }, [state.installedExtensions]);
 
   useEffect(() => {
-    const rightInset = settingsOpen
+    const panelInset = settingsOpen
       ? 980
       : activePanel || extensionPanel
         ? 392
         : quickSettingsOpen
           ? 368
           : 0;
+    const rightInset = Math.max(panelInset, findOpen ? 380 : 0);
 
     void window.ultraX.setViewInsets({
       right: rightInset,
       bottom: state.downloads.length > 0 ? 76 : 0,
     });
-  }, [activePanel, extensionPanel, quickSettingsOpen, settingsOpen, state.downloads.length]);
+  }, [activePanel, extensionPanel, findOpen, quickSettingsOpen, settingsOpen, state.downloads.length]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      const mod = event.metaKey || event.ctrlKey;
-
-      if (mod && key === "l") {
-        event.preventDefault();
-        addressInputRef.current?.focus();
-        addressInputRef.current?.select();
-        return;
-      }
-
-      if (mod && key === "t") {
-        event.preventDefault();
-        void window.ultraX.createTab();
-        return;
-      }
-
-      if (mod && key === "w" && activeTab) {
-        event.preventDefault();
-        void window.ultraX.closeTab(activeTab.id);
-        return;
-      }
-
-      if (mod && key === "r") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          void window.ultraX.hardReload();
-        } else {
-          void window.ultraX.reload();
-        }
-        return;
-      }
-
-      if (mod && key === "d") {
-        event.preventDefault();
-        void window.ultraX.toggleBookmark();
-        return;
-      }
-
-      if (mod && key === "tab") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          void window.ultraX.previousTab();
-        } else {
-          void window.ultraX.nextTab();
-        }
-        return;
-      }
-
-      if (event.altKey && event.key === "ArrowLeft") {
-        event.preventDefault();
-        void window.ultraX.goBack();
-        return;
-      }
-
-      if (event.altKey && event.key === "ArrowRight") {
-        event.preventDefault();
-        void window.ultraX.goForward();
-        return;
-      }
-
       if (event.key === "Escape") {
+        if (findOpen) {
+          event.preventDefault();
+          setFindOpen(false);
+          void window.ultraX.stopFindInPage();
+        }
         setQuickSettingsOpen(false);
         setExtensionPanel(null);
+        return;
       }
+
+      const action = resolveShortcutAction(event, state.settings.shortcutOverrides);
+      if (!action) return;
+      event.preventDefault();
+      invokeShortcut(action);
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeTab]);
+  }, [findOpen, invokeShortcut, state.settings.shortcutOverrides]);
+
+  useEffect(() => window.ultraX.onShortcutInvoked(invokeShortcut), [invokeShortcut]);
 
   const navigate = (input: string) => {
     void window.ultraX.navigate(input);
@@ -269,6 +264,7 @@ export function BrowserShell({ state }: BrowserShellProps) {
         tabHoverPreviewEnabled={state.settings.tabHoverPreview}
         reducedMotion={state.settings.reducedMotion}
         onCreateTab={() => void window.ultraX.createTab()}
+        onReopenClosedTab={() => void window.ultraX.reopenClosedTab()}
         onSwitchTab={(tabId) => void window.ultraX.switchTab(tabId)}
         onCloseTab={(tabId) => void window.ultraX.closeTab(tabId)}
         onDuplicateTab={(tabId) => void window.ultraX.duplicateTab(tabId)}
@@ -316,6 +312,15 @@ export function BrowserShell({ state }: BrowserShellProps) {
         }}
       />
 
+      <FindBar
+        open={findOpen}
+        tabId={activeTab?.id ?? "none"}
+        onClose={() => {
+          setFindOpen(false);
+          void window.ultraX.stopFindInPage();
+        }}
+      />
+
       <QuickSettings
         open={quickSettingsOpen}
         settings={state.settings}
@@ -356,6 +361,8 @@ export function BrowserShell({ state }: BrowserShellProps) {
         onClearNetworkCache={() => void window.ultraX.clearNetworkCache()}
         onClearDownloads={() => void window.ultraX.clearDownloads()}
         onClearBookmarks={() => void window.ultraX.clearBookmarks()}
+        onImportBookmarks={(policy) => window.ultraX.importBookmarks(policy)}
+        onExportBookmarks={() => window.ultraX.exportBookmarks()}
         onChooseDownloadFolder={() => void window.ultraX.chooseDownloadFolder()}
         onOpenDownloadsFolder={() => void window.ultraX.openDownloadsFolder()}
         onChooseNewTabCustomImage={() => window.ultraX.chooseNewTabCustomImage()}
