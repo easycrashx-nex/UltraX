@@ -1,5 +1,11 @@
 # UltraX Browser Changelog
 
+## 1.2.2 - HTML Fullscreen Fix
+
+- Fixed fullscreen buttons on YouTube, Twitch, and other HTML5 media pages.
+- Routed Chromium HTML fullscreen events through the frameless UltraX window.
+- Expanded the active page view across the complete window in fullscreen and restored the browser chrome when exiting.
+
 ## 1.2.1 - Twitch Shutdown Crash Fix
 
 - Fixed a main-process crash when closing UltraX while Twitch or another audio page was active.

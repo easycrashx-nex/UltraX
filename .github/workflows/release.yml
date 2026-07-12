@@ -54,17 +54,17 @@ jobs:
         run: |
           $version = node -p "require('./package.json').version"
           $notes = @"
-          UltraX Browser 1.2.1
+          UltraX Browser 1.2.2
 
-          Fixed a shutdown crash when closing UltraX while a Twitch stream or another audio page is active. Hardened destroyed WebContents handling for audio, tab close, navigation, and window lifecycle events.
+          Fixed HTML fullscreen for YouTube, Twitch, and other media pages. UltraX now handles Chromium fullscreen events and expands the active page over the browser chrome, then restores the normal layout when fullscreen ends.
           The internal package version is $version. Portable builds remain manual.
           "@
 
           gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --title "UltraX Browser 1.2.1" --notes $notes
+            gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --title "UltraX Browser 1.2.2" --notes $notes
           } else {
-            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "UltraX Browser 1.2.1" --notes $notes
+            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "UltraX Browser 1.2.2" --notes $notes
           }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          if ($env:GITHUB_REF_NAME -ne "v1.2.1") { throw "This release workflow is intentionally locked to v1.2.1." }
+          if ($env:GITHUB_REF_NAME -ne "v1.2.2") { throw "This release workflow is intentionally locked to v1.2.2." }
           $setup = "UltraX-Browser-Setup-$version-x64.exe"
           $portable = "UltraX-Browser-$version-Portable-x64.exe"
           $expected = @(

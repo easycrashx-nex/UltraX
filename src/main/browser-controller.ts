@@ -98,8 +98,11 @@ export class BrowserController {
   private state: BrowserState;
   private attachedView: WebContentsView | null = null;
   private disposed = false;
+  private htmlFullscreen = false;
   private insets: ViewInsets = { top: 0, right: 0, bottom: 0 };
   private readonly onWindowBoundsChanged = () => this.layoutActiveView();
+  private readonly onEnterHtmlFullscreen = () => this.enterHtmlFullscreen();
+  private readonly onLeaveHtmlFullscreen = () => this.leaveHtmlFullscreen();
   private readonly windowId: string;
   private readonly initialSession?: BrowserWindowSession;
   private readonly closedTabs: Array<{ tab: BrowserTab; index: number }> = [];
@@ -132,6 +135,8 @@ export class BrowserController {
     this.window.on("resize", this.onWindowBoundsChanged);
     this.window.on("maximize", this.onWindowBoundsChanged);
     this.window.on("unmaximize", this.onWindowBoundsChanged);
+    this.window.on("enter-html-full-screen", this.onEnterHtmlFullscreen);
+    this.window.on("leave-html-full-screen", this.onLeaveHtmlFullscreen);
     this.emitState();
   }
 
@@ -140,6 +145,8 @@ export class BrowserController {
     this.window.off("resize", this.onWindowBoundsChanged);
     this.window.off("maximize", this.onWindowBoundsChanged);
     this.window.off("unmaximize", this.onWindowBoundsChanged);
+    this.window.off("enter-html-full-screen", this.onEnterHtmlFullscreen);
+    this.window.off("leave-html-full-screen", this.onLeaveHtmlFullscreen);
     this.browserSession.off("will-download", this.onDownloadStarted);
     for (const view of this.views.values()) {
       this.detachView(view);
@@ -1367,6 +1374,16 @@ export class BrowserController {
       this.patchTab(tabId, { favicon: favicons[0] });
     });
 
+    view.webContents.on("enter-html-full-screen", () => {
+      if (this.disposed || view.webContents.isDestroyed()) return;
+      this.enterHtmlFullscreen();
+    });
+
+    view.webContents.on("leave-html-full-screen", () => {
+      if (this.disposed) return;
+      this.leaveHtmlFullscreen();
+    });
+
     view.webContents.on("audio-state-changed", (event: ElectronEvent<WebContentsAudioStateChangedEventParams>) => {
       if (this.disposed || this.views.get(tabId) !== view || view.webContents.isDestroyed()) return;
       if (!this.state.tabs.some((tab) => tab.id === tabId)) return;
@@ -1597,14 +1614,17 @@ export class BrowserController {
     }
 
     const bounds = this.window.getContentBounds();
+    const fullscreen = this.htmlFullscreen || this.window.isFullScreen();
     try {
       view.setBounds({
         x: 0,
-        y: BASE_BROWSER_CHROME_HEIGHT + this.insets.top,
-        width: Math.max(0, bounds.width - this.insets.right),
+        y: fullscreen ? 0 : BASE_BROWSER_CHROME_HEIGHT + this.insets.top,
+        width: fullscreen ? bounds.width : Math.max(0, bounds.width - this.insets.right),
         height: Math.max(
           0,
-          bounds.height - BASE_BROWSER_CHROME_HEIGHT - this.insets.top - this.insets.bottom,
+          fullscreen
+            ? bounds.height
+            : bounds.height - BASE_BROWSER_CHROME_HEIGHT - this.insets.top - this.insets.bottom,
         ),
       });
     } catch (error) {
@@ -1612,6 +1632,24 @@ export class BrowserController {
         console.warn("Unable to lay out browser view.", error instanceof Error ? error.message : error);
       }
     }
+  }
+
+  private enterHtmlFullscreen(): void {
+    if (this.disposed || this.window.isDestroyed()) return;
+    this.htmlFullscreen = true;
+    if (!this.window.isFullScreen()) {
+      this.window.setFullScreen(true);
+    }
+    this.layoutActiveView();
+  }
+
+  private leaveHtmlFullscreen(): void {
+    if (this.disposed) return;
+    this.htmlFullscreen = false;
+    if (!this.window.isDestroyed() && this.window.isFullScreen()) {
+      this.window.setFullScreen(false);
+    }
+    this.layoutActiveView();
   }
 
   private patchTabFromContents(

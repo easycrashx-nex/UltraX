@@ -110,6 +110,7 @@ function createWindow(options: CreateWindowOptions = {}): BrowserWindow {
     minHeight: 620,
     frame: false,
     show: false,
+    fullscreenable: true,
     backgroundColor: "#050608",
     icon: getWindowIconPath(),
     title: "UltraX",
