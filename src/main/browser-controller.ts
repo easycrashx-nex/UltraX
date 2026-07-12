@@ -1643,6 +1643,14 @@ export class BrowserController {
     this.layoutActiveView();
   }
 
+  setHtmlFullscreen(active: boolean): void {
+    if (active) {
+      this.enterHtmlFullscreen();
+    } else {
+      this.leaveHtmlFullscreen();
+    }
+  }
+
   private leaveHtmlFullscreen(): void {
     if (this.disposed) return;
     this.htmlFullscreen = false;

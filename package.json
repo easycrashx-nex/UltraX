@@ -1,8 +1,8 @@
 {
   "name": "ultrax",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
-  "productName": "UltraX Browser 1.2.2",
+  "productName": "UltraX Browser 1.2.3",
   "description": "UltraX Browser is a custom Electron desktop browser with React, TypeScript, Tailwind CSS, and WebContentsView tabs.",
   "author": {
     "name": "UltraX",
@@ -27,7 +27,7 @@
     "dist:win": "npm run build && node scripts/clean-release-dir.mjs && electron-builder --win nsis portable --x64 --publish never && npm run checksum:release",
     "dist:win:arm64": "npm run build && node scripts/clean-release-dir.mjs && electron-builder --win nsis portable --arm64 --publish never && npm run checksum:release",
     "checksum:release": "node scripts/generate-release-checksums.mjs",
-    "validate:release": "node scripts/validate-release-assets.mjs --tag=v1.2.2",
+    "validate:release": "node scripts/validate-release-assets.mjs --tag=v1.2.3",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && playwright test --headed",
     "test:e2e:packaged": "cross-env \"ULTRAX_E2E_EXECUTABLE=release/win-unpacked/UltraX Browser.exe\" playwright test --grep \"packaged security boundaries\"",
@@ -67,7 +67,7 @@
   },
   "build": {
     "appId": "com.ultrax.browser",
-      "productName": "UltraX Browser 1.2.2",
+      "productName": "UltraX Browser 1.2.3",
     "copyright": "Copyright 2026 UltraX",
     "executableName": "UltraX Browser",
     "asar": true,
@@ -123,8 +123,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "UltraX Browser 1.2.2",
-      "uninstallDisplayName": "UltraX Browser 1.2.2"
+      "shortcutName": "UltraX Browser 1.2.3",
+      "uninstallDisplayName": "UltraX Browser 1.2.3"
     },
     "portable": {
       "artifactName": "UltraX-Browser-${version}-Portable-${arch}.${ext}"

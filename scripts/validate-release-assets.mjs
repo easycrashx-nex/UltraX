@@ -4,9 +4,9 @@ import path from "node:path";
 import packageJson from "../package.json" with { type: "json" };
 
 const expectedVersion = packageJson.version;
-const expectedTag = "v1.2.2";
+const expectedTag = "v1.2.3";
 const tag = process.argv.find((value) => value.startsWith("--tag="))?.slice(6) ?? process.env.GITHUB_REF_NAME;
-if (expectedVersion !== "1.2.2") throw new Error(`Release validation requires package version 1.2.2, got ${expectedVersion}.`);
+if (expectedVersion !== "1.2.3") throw new Error(`Release validation requires package version 1.2.3, got ${expectedVersion}.`);
 if (tag && tag !== expectedTag) throw new Error(`Release validation requires tag ${expectedTag}, got ${tag}.`);
 
 const releaseDir = path.resolve(process.env.ULTRAX_RELEASE_DIR ?? "release");

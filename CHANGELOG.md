@@ -1,5 +1,10 @@
 # UltraX Browser Changelog
 
+## 1.2.3 - WebContentsView Fullscreen Fallback
+
+- Added a narrow, sender-validated `fullscreenchange` bridge for embedded Chromium pages.
+- Fixed fullscreen handling when Electron does not forward the native HTML fullscreen event from a `WebContentsView`.
+
 ## 1.2.2 - HTML Fullscreen Fix
 
 - Fixed fullscreen buttons on YouTube, Twitch, and other HTML5 media pages.

@@ -5,6 +5,10 @@ import type { PasswordPageMessage } from "../shared/password-manager";
 // This preload is intentionally one-way. It reports narrowly classified form
 // events to the main process and exposes no password API to the website.
 if (window.top === window) {
+  document.addEventListener("fullscreenchange", () => {
+    ipcRenderer.send(IPC.htmlFullscreenChanged, document.fullscreenElement !== null);
+  });
+
   const isVisible = (element: HTMLInputElement): boolean => {
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();

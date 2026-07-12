@@ -43,6 +43,7 @@ const IPC = {
   shortcutInvoked: "browser:shortcut-invoked",
   findInPageResult: "browser:find-in-page-result",
   requestCloseConfirmation: "window:request-close-confirmation",
+  htmlFullscreenChanged: "browser:html-fullscreen-changed",
   getState: "browser:get-state",
   setViewInsets: "browser:set-view-insets",
   createTab: "tabs:create",

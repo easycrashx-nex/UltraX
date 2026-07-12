@@ -442,6 +442,13 @@ function registerIpcHandlers(): void {
     void handlePasswordPageMessage(record, tabId, value);
   });
 
+  ipcMain.removeAllListeners(IPC.htmlFullscreenChanged);
+  ipcMain.on(IPC.htmlFullscreenChanged, (event, value: unknown) => {
+    const record = [...windowRecords.values()].find((candidate) => candidate.controller.getTabIdForWebContents(event.sender) !== undefined);
+    if (!record || !event.senderFrame || event.senderFrame !== event.sender.mainFrame || typeof value !== "boolean") return;
+    record.controller.setHtmlFullscreen(value);
+  });
+
   handle(IPC.getState, (record) => record.controller.getState());
   handle(IPC.setViewInsets, (record, _event, insets) => record.controller.setViewInsets(readInsets(insets)));
   handle(IPC.createTab, (record) => record.controller.createTab(undefined, true));
