@@ -1,5 +1,11 @@
 # UltraX Browser Changelog
 
+## 1.2.1 - Twitch Shutdown Crash Fix
+
+- Fixed a main-process crash when closing UltraX while Twitch or another audio page was active.
+- Ignored late audio, title, navigation, and tab lifecycle events after a WebContents instance was destroyed or its tab was removed.
+- Hardened mute, tab move, New Tab conversion, and browser disposal paths against destroyed WebContents.
+
 ## 1.2.0 - Password Save & Autofill Integration
 
 - Added isolated top-level login form detection with transient Main-process candidate handling.

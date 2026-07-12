@@ -25,6 +25,6 @@ Official releases: `https://github.com/easycrashx-nex/UltraX/releases`
 
 UltraX does not install an update without explicit confirmation. After `Install and Restart`, electron-updater runs the downloaded NSIS package through its supported silent path and relaunches UltraX.
 
-Installed NSIS builds use the official GitHub provider and electron-updater. The `v1.2.0` release publishes matching `latest.yml`, NSIS blockmap, and installer metadata. The update manager verifies HTTPS metadata and SHA-512 before `quitAndInstall(true, true)`; it never starts a downloaded executable from the renderer.
+Installed NSIS builds use the official GitHub provider and electron-updater. The `v1.2.1` release publishes matching `latest.yml`, NSIS blockmap, and installer metadata. The update manager verifies HTTPS metadata and SHA-512 before `quitAndInstall(true, true)`; it never starts a downloaded executable from the renderer.
 
 Code signing is still not configured. This means Windows SmartScreen warnings may remain even though the release metadata and downloaded bytes are integrity-checked. Portable builds do not participate in in-app installation.

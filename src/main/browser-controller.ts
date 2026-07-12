@@ -97,6 +97,7 @@ export class BrowserController {
   private readonly extensionStore = new LocalExtensionStoreProvider();
   private state: BrowserState;
   private attachedView: WebContentsView | null = null;
+  private disposed = false;
   private insets: ViewInsets = { top: 0, right: 0, bottom: 0 };
   private readonly onWindowBoundsChanged = () => this.layoutActiveView();
   private readonly windowId: string;
@@ -135,6 +136,7 @@ export class BrowserController {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.window.off("resize", this.onWindowBoundsChanged);
     this.window.off("maximize", this.onWindowBoundsChanged);
     this.window.off("unmaximize", this.onWindowBoundsChanged);
@@ -203,7 +205,7 @@ export class BrowserController {
     const view = this.views.get(tab.id);
     if (view) {
       this.detachView(view);
-      view.webContents.close({ waitForBeforeUnload: false });
+      if (!view.webContents.isDestroyed()) view.webContents.close({ waitForBeforeUnload: false });
       this.views.delete(tab.id);
     }
 
@@ -360,10 +362,12 @@ export class BrowserController {
     const movedTab = this.cloneTabForWindowMove(tab);
     const view = this.views.get(tab.id);
     if (view) {
-      movedTab.isMuted = view.webContents.isAudioMuted();
-      movedTab.isAudible = view.webContents.isCurrentlyAudible();
-      this.detachView(view);
-      view.webContents.close({ waitForBeforeUnload: false });
+      if (!view.webContents.isDestroyed()) {
+        movedTab.isMuted = view.webContents.isAudioMuted();
+        movedTab.isAudible = view.webContents.isCurrentlyAudible();
+        this.detachView(view);
+        view.webContents.close({ waitForBeforeUnload: false });
+      }
       this.views.delete(tab.id);
     }
 
@@ -388,14 +392,15 @@ export class BrowserController {
     }
 
     const view = this.views.get(tab.id);
-    const nextMuted = !(view?.webContents.isAudioMuted() ?? tab.isMuted ?? false);
-    if (view) {
+    const viewAlive = Boolean(view && !view.webContents.isDestroyed());
+    const nextMuted = !(viewAlive ? view?.webContents.isAudioMuted() : (tab.isMuted ?? false));
+    if (viewAlive && view) {
       view.webContents.setAudioMuted(nextMuted);
     }
 
     this.patchTab(tab.id, {
       isMuted: nextMuted,
-      isAudible: view?.webContents.isCurrentlyAudible() ?? tab.isAudible ?? false,
+      isAudible: viewAlive ? view?.webContents.isCurrentlyAudible() : (tab.isAudible ?? false),
     });
   }
 
@@ -1351,6 +1356,7 @@ export class BrowserController {
     });
 
     view.webContents.on("page-title-updated", (event, title) => {
+      if (this.disposed || view.webContents.isDestroyed()) return;
       event.preventDefault();
       const resolvedTitle = title || "Untitled";
       this.patchTabFromContents(tabId, view.webContents, { title: resolvedTitle });
@@ -1362,6 +1368,8 @@ export class BrowserController {
     });
 
     view.webContents.on("audio-state-changed", (event: ElectronEvent<WebContentsAudioStateChangedEventParams>) => {
+      if (this.disposed || this.views.get(tabId) !== view || view.webContents.isDestroyed()) return;
+      if (!this.state.tabs.some((tab) => tab.id === tabId)) return;
       this.patchTab(tabId, {
         isAudible: event.audible,
         isMuted: view.webContents.isAudioMuted(),
@@ -1420,7 +1428,7 @@ export class BrowserController {
     contents: WebContents,
     url: string,
   ): void {
-    if (!isSafeWebUrl(url)) {
+    if (this.disposed || contents.isDestroyed() || !isSafeWebUrl(url)) {
       return;
     }
 
@@ -1486,7 +1494,7 @@ export class BrowserController {
     const view = this.views.get(tab.id);
     if (view) {
       this.detachView(view);
-      view.webContents.close({ waitForBeforeUnload: false });
+      if (!view.webContents.isDestroyed()) view.webContents.close({ waitForBeforeUnload: false });
       this.views.delete(tab.id);
     }
 
@@ -1611,6 +1619,7 @@ export class BrowserController {
     contents: WebContents,
     patch: Partial<BrowserTab>,
   ): void {
+    if (this.disposed || contents.isDestroyed()) return;
     this.patchTab(tabId, {
       url: isSafeWebUrl(contents.getURL()) ? contents.getURL() : patch.url,
       title: patch.title,

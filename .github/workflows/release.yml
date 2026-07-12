@@ -54,17 +54,17 @@ jobs:
         run: |
           $version = node -p "require('./package.json').version"
           $notes = @"
-          UltraX Browser 1.2.0
+          UltraX Browser 1.2.1
 
-          Automatic password saving, trusted autofill suggestions, exact-origin matching, and secure vault integration.
+          Fixed a shutdown crash when closing UltraX while a Twitch stream or another audio page is active. Hardened destroyed WebContents handling for audio, tab close, navigation, and window lifecycle events.
           The internal package version is $version. Portable builds remain manual.
           "@
 
           gh release view $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --title "UltraX Browser 1.2.0" --notes $notes
+            gh release edit $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --title "UltraX Browser 1.2.1" --notes $notes
           } else {
-            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "UltraX Browser 1.2.0" --notes $notes
+            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "UltraX Browser 1.2.1" --notes $notes
           }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $version = node -p "require('./package.json').version"
-          if ($env:GITHUB_REF_NAME -ne "v1.2.0") { throw "This release workflow is intentionally locked to v1.2.0." }
+          if ($env:GITHUB_REF_NAME -ne "v1.2.1") { throw "This release workflow is intentionally locked to v1.2.1." }
           $setup = "UltraX-Browser-Setup-$version-x64.exe"
           $portable = "UltraX-Browser-$version-Portable-x64.exe"
           $expected = @(
